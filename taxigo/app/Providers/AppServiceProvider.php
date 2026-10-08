@@ -25,14 +25,22 @@ class AppServiceProvider extends ServiceProvider
     {
         // Set the default string length for database columns
         Schema::defaultStringLength(191);
-        $settings = Environment::whereIn('title', [
-            'smtppassword',
-            'smtphost',
-            'smtpport',
-            'smtpusername',
-            'fromaddress',
-            'smtpauthentication'
-        ])->pluck('value', 'title');
+
+        // SMTP settings live in the environments table. The database isn't
+        // reachable during the Docker build (composer runs package:discover)
+        // or before migrations, so fall back to the .env mail config then.
+        try {
+            $settings = Environment::whereIn('title', [
+                'smtppassword',
+                'smtphost',
+                'smtpport',
+                'smtpusername',
+                'fromaddress',
+                'smtpauthentication'
+            ])->pluck('value', 'title');
+        } catch (\Throwable $e) {
+            return;
+        }
 
         if ($settings->isNotEmpty()) {
             Config::set('mail.mailers.smtp.host', $settings['smtphost'] ?? '');

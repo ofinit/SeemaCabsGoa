@@ -32,7 +32,6 @@ live there and get copied into Laravel's `public/` directory during the build.
 - **Collect from the current server:**
   - the current `APP_KEY`. Reuse it: a new key logs everyone out and breaks any
     encrypted values.
-  - the mail (SMTP) credentials
   - `storage/app/firebase/firebase_credentials.json`
   - the uploaded images (`storage/app/public/`, ~150 MB)
   - a database export (`.sql`), made with phpMyAdmin or `mysqldump`
@@ -100,15 +99,20 @@ Add these under **Environment Variables**. Never commit a `.env` file.
 | `DB_CONNECTION` | `mysql` |
 | `DB_HOST` / `DB_PORT` | *(internal hostname of the Coolify MySQL, section 2)* / `3306` |
 | `DB_DATABASE` / `DB_USERNAME` / `DB_PASSWORD` | `taxigo` / *(user and password from the Coolify MySQL page)* |
-| `MAIL_MAILER`, `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_ENCRYPTION`, `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` | *(SMTP settings)* |
+| `MAIL_MAILER` | `smtp` |
+| `BROADCAST_DRIVER` | `log` |
 | `SESSION_DRIVER` | `file` |
 | `SESSION_SECURE_COOKIE` | `true` |
 | `CACHE_DRIVER` | `file` |
 | `QUEUE_CONNECTION` | `sync` |
 | `FILESYSTEM_DISK` | `local` |
 
-The Razorpay and Cashfree keys are **not** environment variables. They live in
-the `environments` database table and are managed from the admin panel.
+The Razorpay/Cashfree keys and the SMTP mail settings are **not** environment
+variables. They live in the `environments` database table and are managed
+from the admin panel, so they arrive with the database import.
+
+Leave **Build Variable** unchecked for all of these. They are only needed at
+runtime, and this keeps secrets out of the image layers.
 
 ## 5. Persistent storage
 
