@@ -19,9 +19,9 @@ live there and get copied into Laravel's `public/` directory during the build.
 
 ## 1. Before you start
 
-- **Database access.** The app uses the existing MySQL database. Allow inbound
-  connections on port 3306 from the Coolify server's public IP in the database
-  host's firewall.
+- **Database.** The app uses its own MySQL database running on the Coolify
+  server (section 2). The data is moved over from the old CloudJiffy database
+  with a dump and import; see section 8 for the final cutover.
 - **Frontend assets.** `taxigo/public/build` is committed and used as-is, so the
   server doesn't need Node. After changing anything in `resources/`, run
   `npm run build` inside `taxigo/` and commit the updated `public/build`.
@@ -32,11 +32,46 @@ live there and get copied into Laravel's `public/` directory during the build.
 - **Collect from the current server:**
   - the current `APP_KEY`. Reuse it: a new key logs everyone out and breaks any
     encrypted values.
-  - the database and mail credentials
+  - the mail (SMTP) credentials
   - `storage/app/firebase/firebase_credentials.json`
   - the uploaded images (`storage/app/public/`, ~150 MB)
+  - a database export (`.sql`), made with phpMyAdmin or `mysqldump`
 
-## 2. Create the application in Coolify
+## 2. Create the MySQL database in Coolify
+
+1. In the **same project and environment** as the app: **+ New → Database →
+   MySQL**, version **8.4**. This matches the old server (8.4.5).
+2. Set **Database** to `taxigo` and choose a username. Let Coolify generate
+   the passwords, and keep them only in Coolify.
+3. Leave **Make it publicly available** **off**. The app reaches the database
+   over Coolify's internal Docker network, so port 3306 never needs to be open
+   to the internet.
+4. Under **Backups**, enable scheduled backups (e.g. daily) to S3-compatible
+   storage, so the database is never backed up only on the same disk.
+5. **Start** it, and note its **internal hostname** (the container name /
+   UUID shown under *Internal URL*). This goes in `DB_HOST`.
+
+### Import the data
+
+The dump is a plain phpMyAdmin/mysqldump file. It has no views, triggers,
+procedures or `DEFINER` clauses, uses `utf8mb4_unicode_ci`, and has no
+`CREATE DATABASE` line, so it imports into the `taxigo` database you
+created. Copy it to the server over SSH (it contains customer data), then run:
+
+```bash
+# On the Coolify server. <db-container> is the database's container name
+# (docker ps | grep mysql); the root password is on its Coolify page.
+docker exec -i <db-container> \
+  mysql -uroot -p'<root-password>' --default-character-set=utf8mb4 taxigo < taxigo.sql
+
+# Sanity check: should list 43 tables
+docker exec -i <db-container> mysql -uroot -p'<root-password>' -e "SHOW TABLES" taxigo | wc -l
+
+# Delete the dump from the server afterwards
+rm taxigo.sql
+```
+
+## 3. Create the application in Coolify
 
 1. **+ New → Application → Private Repository (with GitHub App)** and select
    `ofinit/SeemaCabsGoa`, branch `main`.
@@ -50,7 +85,7 @@ live there and get copied into Laravel's `public/` directory during the build.
    TLS certificates for both names.
 7. **Health check** (optional): path `/healthcheck`, port `8080`.
 
-## 3. Environment variables
+## 4. Environment variables
 
 Add these under **Environment Variables**. Never commit a `.env` file.
 
@@ -63,8 +98,8 @@ Add these under **Environment Variables**. Never commit a `.env` file.
 | `APP_URL` | `https://www.seemacabsgoa.com` |
 | `LOG_LEVEL` | `error` |
 | `DB_CONNECTION` | `mysql` |
-| `DB_HOST` / `DB_PORT` | *(database host)* / `3306` |
-| `DB_DATABASE` / `DB_USERNAME` / `DB_PASSWORD` | *(database credentials)* |
+| `DB_HOST` / `DB_PORT` | *(internal hostname of the Coolify MySQL, section 2)* / `3306` |
+| `DB_DATABASE` / `DB_USERNAME` / `DB_PASSWORD` | `taxigo` / *(user and password from the Coolify MySQL page)* |
 | `MAIL_MAILER`, `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_ENCRYPTION`, `MAIL_FROM_ADDRESS`, `MAIL_FROM_NAME` | *(SMTP settings)* |
 | `SESSION_DRIVER` | `file` |
 | `SESSION_SECURE_COOKIE` | `true` |
@@ -75,7 +110,7 @@ Add these under **Environment Variables**. Never commit a `.env` file.
 The Razorpay and Cashfree keys are **not** environment variables. They live in
 the `environments` database table and are managed from the admin panel.
 
-## 4. Persistent storage
+## 5. Persistent storage
 
 Under **Persistent Storage**:
 
@@ -102,7 +137,7 @@ sudo chown -R 33:33 /var/lib/docker/volumes/<volume-name>/_data/
 These files include Aadhaar cards and driving licences. Transfer them over
 SSH/SFTP only, delete any temporary copies afterwards, and never commit them.
 
-## 5. Deploy
+## 6. Deploy
 
 Click **Deploy**. When the container starts it automatically runs
 `storage:link` and caches the config, routes, views and events.
@@ -115,7 +150,7 @@ database first, then run this in the Coolify **Terminal** for the app:
 php artisan migrate --force
 ```
 
-## 6. Verify
+## 7. Verify
 
 - [ ] `https://www.seemacabsgoa.com/` shows the marketing homepage, and `https://seemacabsgoa.com/` redirects to it
 - [ ] `/airport-taxi-goa.html` and the other marketing pages load with styles and images
@@ -127,10 +162,29 @@ php artisan migrate --force
 - [ ] The mobile apps can reach `/api/...`
 - [ ] Coolify **Logs** show no errors (Laravel logs go to stderr)
 
-## 7. Updating
+## 8. Go-live cutover (final data sync)
+
+Everything above can be tested with an earlier dump while the old site keeps
+running. Bookings made on the old site after that dump are **not** in the new
+database, so on go-live day:
+
+1. Pause the old site: put it in maintenance mode (`php artisan down`) or
+   switch off booking, so no new data is written.
+2. Export a **fresh** dump from the old CloudJiffy database.
+3. Re-import it into the Coolify MySQL (section 2). Drop and recreate the
+   `taxigo` database first so no test data is left over.
+4. Re-sync the uploads into the volume (section 5). `rsync` only copies the
+   new files.
+5. Point DNS for `seemacabsgoa.com` and `www.seemacabsgoa.com` at the Coolify
+   server, then run through the checklist in section 7.
+6. Keep the old server and database untouched, but paused, for a few days as a
+   fallback, then decommission them.
+
+## 9. Updating
 
 Push to `main`, then click **Redeploy**, or enable Coolify's auto-deploy webhook.
-The uploads volume, sessions volume and Firebase file are kept between deploys.
+The uploads volume, sessions volume, Firebase file and the MySQL database are
+kept between deploys.
 
 ## Security notes
 
