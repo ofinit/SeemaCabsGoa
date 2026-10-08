@@ -1,7 +1,6 @@
 <?php
 
 use App\Http\Controllers\Admin\AuthController;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\HomeController;
 use Illuminate\Support\Facades\Auth;
@@ -17,22 +16,8 @@ use Illuminate\Support\Facades\Auth;
 |
 */
 
-Route::get('clear', function () {
-    Artisan::call('cache:clear');
-    Artisan::call('view:clear');
-    Artisan::call('route:clear');
-    return "Done!";
-});
-
-Route::get('migrate', function () {
-    Artisan::call('migrate');
-    return "Done!";
-});
-
-Route::get('in-city-rides', function () {
-    Artisan::call('store:in-city-rides');
-    return "Done!";
-});
+// Maintenance commands (cache:clear, migrate, store:in-city-rides) are run with
+// `php artisan` from the server terminal, never exposed as public URLs.
 
 Auth::routes();
 

@@ -134,10 +134,9 @@ The uploads volume, sessions volume and Firebase file are kept between deploys.
 
 ## Security notes
 
-- `routes/web.php` exposes unauthenticated `GET /clear`, `/migrate` and
-  `/in-city-rides` routes that run Artisan commands. Anyone can trigger a
-  migration against the live database. Remove them or put them behind admin
-  auth before going live.
+- There are no web URLs that run Artisan commands; the old public `/clear`,
+  `/migrate` and `/in-city-rides` routes were removed. Use the Coolify
+  **Terminal** instead, e.g. `php artisan optimize:clear`.
 - The Google Maps/Firebase browser keys in the Blade views and
   `public/firebase-messaging-sw.js` are public by design. Make sure they are
   restricted to the `seemacabsgoa.com` HTTP referrer in Google Cloud Console.
