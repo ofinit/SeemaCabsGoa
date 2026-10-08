@@ -5,7 +5,7 @@ One Docker image serves everything on a single domain:
 | URL | Served by |
 |---|---|
 | `/`, `/airport-taxi-goa.html`, `/contact.html`, … | Static marketing site (repo root) |
-| `/app/...` | Customer PWA (Laravel) |
+| `/app/...` | Customer PWA (Laravel): `https://www.seemacabsgoa.com/app` |
 | `/login`, `/dashboard`, … | Admin panel (Laravel, 2FA protected) |
 | `/api/...` | REST API for the mobile apps (Laravel) |
 | `/storage/...` | Uploaded images (persistent volume) |
@@ -27,7 +27,7 @@ live there and get copied into Laravel's `public/` directory during the build.
   `npm run build` inside `taxigo/` and commit the updated `public/build`.
 - **Mobile apps.** Check which API base URL the Android and iOS apps use. If it
   is `https://seemacabsgoa.com/taxigo/api/...`, the apps must be updated to
-  `https://seemacabsgoa.com/api/...` before DNS points at Coolify. Until then,
+  `https://www.seemacabsgoa.com/api/...` before DNS points at Coolify. Until then,
   keep the old server answering the old URL.
 - **Collect from the current server:**
   - the current `APP_KEY`. Reuse it: a new key logs everyone out and breaks any
@@ -44,8 +44,10 @@ live there and get copied into Laravel's `public/` directory during the build.
 3. **Base Directory:** `/`
 4. **Dockerfile Location:** `/taxigo/Dockerfile`
 5. **Ports Exposes:** `8080`
-6. **Domains:** `https://seemacabsgoa.com,https://www.seemacabsgoa.com`
-   (Coolify issues the TLS certificates).
+6. **Domains:** `https://www.seemacabsgoa.com,https://seemacabsgoa.com`, and under
+   **Advanced → Redirect Direction** choose **Redirect to www**. `www` is the
+   canonical host: the sitemap and `robots.txt` use it, and Coolify issues the
+   TLS certificates for both names.
 7. **Health check** (optional): path `/healthcheck`, port `8080`.
 
 ## 3. Environment variables
@@ -58,7 +60,7 @@ Add these under **Environment Variables**. Never commit a `.env` file.
 | `APP_ENV` | `production` |
 | `APP_KEY` | *(the existing key from the current server)* |
 | `APP_DEBUG` | `false` |
-| `APP_URL` | `https://seemacabsgoa.com` |
+| `APP_URL` | `https://www.seemacabsgoa.com` |
 | `LOG_LEVEL` | `error` |
 | `DB_CONNECTION` | `mysql` |
 | `DB_HOST` / `DB_PORT` | *(database host)* / `3306` |
@@ -115,9 +117,9 @@ php artisan migrate --force
 
 ## 6. Verify
 
-- [ ] `https://seemacabsgoa.com/` shows the marketing homepage
+- [ ] `https://www.seemacabsgoa.com/` shows the marketing homepage, and `https://seemacabsgoa.com/` redirects to it
 - [ ] `/airport-taxi-goa.html` and the other marketing pages load with styles and images
-- [ ] `/app` loads the customer PWA; logging in with OTP works
+- [ ] `https://www.seemacabsgoa.com/app` loads the customer PWA; it can be installed to the home screen and OTP login works
 - [ ] `/login` shows the admin login; 2FA works
 - [ ] An existing uploaded image (e.g. a cab photo in the admin panel) displays
 - [ ] A test booking and payment (Razorpay/Cashfree) go through

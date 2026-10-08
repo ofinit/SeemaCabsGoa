@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://seemacabsgoa.com/sitemap.xml
+Sitemap: https://www.seemacabsgoa.com/sitemap.xml
