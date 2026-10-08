@@ -1,0 +1,5 @@
+// Pre-existing @import 'themes/pages/new-styles' in style.scss pointed at a
+// file that was never checked into the repo (confirmed via git log — this
+// import has been dangling since the initial commit), which broke `npm run
+// build` entirely. Added as an empty placeholder so the existing admin theme
+// build succeeds; add real rules here if this partial was meant to hold any.

@@ -1,0 +1,35 @@
+# Build context is the repo root (see taxigo/Dockerfile). Keep secrets, uploads
+# and local-only material out of the image even when building from a working copy.
+.git
+**/.env
+**/.env.*
+!taxigo/.env.example
+**/env_backup
+**/firebase_credentials*.json
+*.sql
+*.sql.gz
+*.sql.zip
+
+figma-designs
+screenshots
+.agents
+
+**/node_modules
+taxigo/vendor
+taxigo/vendor_
+taxigo/vendor.zip
+
+taxigo/public/storage
+taxigo/public/hot
+taxigo/storage/app/firebase
+taxigo/storage/app/public/*
+!taxigo/storage/app/public/.gitignore
+taxigo/storage/logs/*
+!taxigo/storage/logs/.gitignore
+taxigo/storage/framework/cache/data/*
+!taxigo/storage/framework/cache/data/.gitignore
+taxigo/storage/framework/sessions/*
+!taxigo/storage/framework/sessions/.gitignore
+taxigo/storage/framework/views/*
+!taxigo/storage/framework/views/.gitignore
+taxigo/bootstrap/cache/*.php

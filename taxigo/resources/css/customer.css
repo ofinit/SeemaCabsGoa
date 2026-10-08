@@ -1,0 +1,128 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    overflow-x: hidden;
+  }
+
+  body {
+    @apply bg-cream text-ink font-sans antialiased;
+    overflow-x: hidden;
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* old Edge/IE */
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+  }
+
+  @keyframes fade-in-up {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-in {
+    animation: fade-in-up 400ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes pop-in {
+    0% { opacity: 0; transform: scale(0.6); }
+    70% { opacity: 1; transform: scale(1.08); }
+    100% { transform: scale(1); }
+  }
+  .animate-pop {
+    animation: pop-in 480ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-in, .animate-pop {
+      animation: none !important;
+    }
+  }
+}
+
+@layer components {
+  /* Pill buttons, shared across every screen */
+  .btn-pill {
+    @apply inline-flex items-center justify-center gap-2.5 rounded-pill px-6 py-3.5 font-semibold text-[15px] transition-all duration-200 active:scale-[0.97] disabled:opacity-50 disabled:pointer-events-none;
+  }
+  .btn-primary {
+    @apply btn-pill bg-gold text-ink shadow-[0_4px_16px_rgba(246,192,24,0.35)] hover:brightness-[0.98] active:shadow-none;
+  }
+  .btn-secondary {
+    @apply btn-pill bg-ink text-white hover:brightness-110;
+  }
+  .btn-outline {
+    @apply btn-pill bg-white text-ink border border-black/[0.08] hover:bg-black/[0.02];
+  }
+  .btn-success {
+    @apply btn-pill bg-success text-white;
+  }
+  .btn-danger {
+    @apply btn-pill bg-danger text-white;
+  }
+
+  .btn-icon-bubble {
+    @apply w-6 h-6 rounded-full bg-black/10 flex items-center justify-center -mr-1 transition-transform group-hover:translate-x-0.5;
+  }
+
+  .field-input {
+    @apply w-full rounded-pill border border-black/[0.08] bg-white px-5 py-3.5 text-[15px] text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-gold/80 transition-shadow;
+  }
+  /* Native <select> elements */
+  select.field-input {
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 2.75rem;
+    background-repeat: no-repeat;
+    background-position: right 1.1rem center;
+    background-size: 1rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23707A8A' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  }
+  .field-label {
+    @apply block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5;
+  }
+
+  /* Card and Double-Bezel (Doppelrand) surfaces */
+  .card {
+    @apply bg-white rounded-card shadow-card p-5 border border-black/[0.04];
+  }
+  .card-bezel {
+    @apply bg-black/[0.025] p-1.5 rounded-card-outer border border-black/[0.035];
+  }
+  .card-core {
+    @apply bg-white rounded-card-inner shadow-bezel p-4;
+  }
+
+  /* Route Waypoint Spine Container */
+  .waypoint-spine {
+    position: relative;
+  }
+
+  /* Status Badges */
+  .status-badge {
+    @apply inline-flex items-center rounded-pill px-3 py-1 text-xs font-semibold;
+  }
+  .status-badge--assigned { @apply bg-peach/40 text-orange-900 border border-orange-200; }
+  .status-badge--confirmed { @apply bg-gold/20 text-yellow-950 border border-gold/40; }
+  .status-badge--cancelled { @apply bg-red-50 text-danger border border-red-200; }
+  .status-badge--refunded { @apply bg-blue-50 text-blue-800 border border-blue-200; }
+  .status-badge--completed { @apply bg-emerald-50 text-success border border-emerald-200; }
+
+  /* Bottom Dock with Frosted Blur */
+  .dock-glass {
+    @apply backdrop-blur-xl bg-white/90 border-t border-black/[0.06] shadow-sheet;
+  }
+
+  .app-shell {
+    @apply max-w-app mx-auto min-h-screen bg-cream relative;
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}

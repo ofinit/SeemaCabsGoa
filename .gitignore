@@ -1,0 +1,40 @@
+# ---- Secrets: never commit. Set these in Coolify instead (see taxigo/DEPLOYMENT.md)
+.env
+.env.*
+!.env.example
+**/env_backup
+**/firebase_credentials*.json
+taxigo/storage/app/firebase/
+
+# ---- Database dumps (contain customer data)
+*.sql
+*.sql.gz
+*.sql.zip
+
+# ---- User uploads: Aadhaar cards, driving licences, profile photos.
+# These live on a persistent Coolify volume, not in git.
+taxigo/public/storage
+taxigo/storage/app/public/*
+!taxigo/storage/app/public/.gitignore
+taxigo/public/Customers/*
+!taxigo/public/Customers/default.png
+!taxigo/public/Customers/cimage.jpeg
+
+# ---- Dependencies and local backups of them
+node_modules/
+taxigo/vendor/
+taxigo/vendor_/
+taxigo/vendor.zip
+
+# ---- Design/reference material not needed to run the site
+figma-designs/
+screenshots/
+
+# ---- Old shared-hosting config (server-specific paths)
+.user.ini
+
+# ---- OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
