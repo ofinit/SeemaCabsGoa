@@ -27,7 +27,7 @@
             </a>
 
             {{-- Rapid Route Chips --}}
-            <div class="flex gap-2 mt-2.5 overflow-x-auto no-scrollbar py-0.5">
+            <div class="flex flex-wrap gap-2 mt-2.5 py-0.5">
                 <a href="{{ route('customer.book', ['trip' => 'airport', 'airportDirection' => 'drop', 'to' => '2']) }}" class="px-3 py-1.5 rounded-pill bg-white border border-black/[0.06] text-xs font-medium text-ink whitespace-nowrap hover:border-gold active:scale-95 transition flex items-center gap-1.5 shadow-sm">
                     <span>✈️</span> Mopa Airport (GOX)
                 </a>
