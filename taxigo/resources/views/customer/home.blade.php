@@ -80,7 +80,7 @@
                         <div>
                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gold/30 text-[10px] font-bold uppercase tracking-wider text-yellow-950 mb-1.5">Best Rates</span>
                             <h3 class="font-bold text-ink text-[15px]">Goa Airport Transfers</h3>
-                            <p class="text-xs text-muted mt-0.5">Fixed rates for Mopa (GOX) &amp; Dabolim (GOI)</p>
+                            <p class="text-xs text-muted mt-0.5">Best rates for Mopa (GOX) &amp; Dabolim (GOI)</p>
                         </div>
                         <div class="w-11 h-11 rounded-2xl bg-gold/20 flex items-center justify-center text-ink shrink-0 group-hover:scale-105 transition-transform">
                             <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>
