@@ -26,6 +26,8 @@
             <p class="text-sm text-muted">{{ $campaign->start_date?->format('d M Y') }} – {{ $campaign->end_date?->format('d M Y') }} · {{ $campaign->days }} days</p>
             <p class="text-sm text-ink">{{ $campaign->items->map(fn ($i) => $i->placement->code . ' ' . $i->placement->name)->implode(' · ') }}</p>
             <p class="text-sm text-muted break-all">Link: {{ $campaign->landing_url ?: '—' }}</p>
+            <p class="text-sm text-muted">Audience: {{ \App\Services\Ads\AdTargeting::describe($campaign->targeting) }}</p>
+            @if($campaign->headline)<p class="text-sm text-muted">Message: {{ $campaign->headline }}</p>@endif
 
             @switch($campaign->status)
                 @case(AdCampaign::IN_REVIEW)
@@ -92,6 +94,7 @@
                     </details>
                 @endif
                 <p class="text-xs text-muted">A view counts when at least half the ad is on screen for one second. Numbers update every few minutes.</p>
+                <a href="{{ route('customer.ads.export', $campaign) }}" class="text-sm underline">Download results (CSV)</a>
             </div>
 
             <div class="card space-y-2">
@@ -100,6 +103,15 @@
                     <div class="flex justify-between"><span class="text-muted">Price</span><span class="tabular-nums">{{ AdCampaign::rupees($campaign->list_amount) }}</span></div>
                     @if($campaign->discount_amount > 0)
                         <div class="flex justify-between"><span class="text-muted">Discount ({{ (float) $campaign->discount_percent }}%)</span><span class="tabular-nums">− {{ AdCampaign::rupees($campaign->discount_amount) }}</span></div>
+                    @endif
+                    @if($campaign->bundle_discount > 0)
+                        <div class="flex justify-between"><span class="text-muted">Bundle saving</span><span class="tabular-nums">− {{ AdCampaign::rupees($campaign->bundle_discount) }}</span></div>
+                    @endif
+                    @if($campaign->exclusivity_amount > 0)
+                        <div class="flex justify-between"><span class="text-muted">Category exclusivity</span><span class="tabular-nums">+ {{ AdCampaign::rupees($campaign->exclusivity_amount) }}</span></div>
+                    @endif
+                    @if($campaign->promo_discount > 0)
+                        <div class="flex justify-between"><span class="text-muted">{{ $campaign->promo_label }}</span><span class="tabular-nums">− {{ AdCampaign::rupees($campaign->promo_discount) }}</span></div>
                     @endif
                     <div class="flex justify-between"><span class="text-muted">GST {{ (float) $campaign->gst_rate }}%</span><span class="tabular-nums">{{ AdCampaign::rupees($campaign->gstAmount()) }}</span></div>
                     <div class="flex justify-between font-bold"><span>Paid</span><span class="tabular-nums">{{ AdCampaign::rupees($campaign->total_amount) }}</span></div>

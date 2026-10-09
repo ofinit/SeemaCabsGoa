@@ -40,6 +40,11 @@ Route::get('invoices/{invoice}', [InvoiceDocumentController::class, 'signed'])->
 // Ad click tracking: signed link → click counted → advertiser URL with UTM tags.
 Route::get('ads/c/{advertisement}', [AdTrackingController::class, 'click'])->middleware(['signed', 'throttle:120,1'])->name('ads.click');
 
+// Website ads (P9) for the static marketing pages: fetch, view beacon, report. No session needed.
+Route::get('ads/web', [AdTrackingController::class, 'web'])->middleware('throttle:120,1')->name('ads.web');
+Route::post('ads/i', [AdTrackingController::class, 'impressions'])->middleware('throttle:120,1')->name('ads.impressions');
+Route::post('ads/report', [AdTrackingController::class, 'report'])->middleware('throttle:10,1')->name('ads.report');
+
 // The Docker image copies the static marketing site into public/, so the root
 // URL serves its homepage. Without it (e.g. local dev) fall back to the legacy
 // authenticated dashboard view.

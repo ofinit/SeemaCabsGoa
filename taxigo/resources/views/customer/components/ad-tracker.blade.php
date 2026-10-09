@@ -52,6 +52,47 @@
         });
     }
 
+    // "Sponsored ⓘ" opens a small sheet: why this is shown + report it.
+    var reportUrl = @js(route('customer.actions.ad-report'));
+    var reasons = @js(\App\Models\AdReport::REASONS);
+    document.addEventListener('click', function (event) {
+        var tag = event.target.closest && event.target.closest('.ad-report');
+        if (!tag) return;
+        event.preventDefault();
+        event.stopPropagation();
+        var holder = tag.closest('[data-ad-id]');
+        var adId = holder && parseInt(holder.dataset.adId, 10);
+        if (!adId) return;
+        var sheet = document.createElement('div');
+        sheet.style.cssText = 'position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.5);display:flex;align-items:flex-end;justify-content:center';
+        var box = document.createElement('div');
+        box.style.cssText = 'background:#fff;width:100%;max-width:480px;border-radius:24px 24px 0 0;padding:20px;font-family:inherit';
+        box.innerHTML = '<p style="font-weight:700;margin:0 0 4px">Sponsored</p><p style="font-size:13px;color:#6b7280;margin:0 0 12px">This ad was paid for by a local business and checked by our team. Is something wrong with it?</p>';
+        Object.keys(reasons).forEach(function (key) {
+            var b = document.createElement('button');
+            b.type = 'button';
+            b.textContent = reasons[key];
+            b.style.cssText = 'display:block;width:100%;text-align:left;padding:12px 14px;margin:0 0 6px;border:1px solid rgba(0,0,0,.08);border-radius:14px;background:#fff;font-size:14px';
+            b.addEventListener('click', function () {
+                try {
+                    fetch(reportUrl, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf }, body: JSON.stringify({ id: adId, reason: key, platform: 'pwa' }) }).catch(function () {});
+                } catch (e) {}
+                box.innerHTML = '<p style="font-weight:700;margin:0 0 4px">Thanks</p><p style="font-size:13px;color:#6b7280;margin:0">Our team will review this ad.</p>';
+                setTimeout(function () { sheet.remove(); }, 1500);
+            });
+            box.appendChild(b);
+        });
+        var close = document.createElement('button');
+        close.type = 'button';
+        close.textContent = 'Close';
+        close.style.cssText = 'display:block;width:100%;padding:10px;border:0;background:none;color:#6b7280;font-size:14px';
+        close.addEventListener('click', function () { sheet.remove(); });
+        box.appendChild(close);
+        sheet.appendChild(box);
+        sheet.addEventListener('click', function (e) { if (e.target === sheet) sheet.remove(); });
+        document.body.appendChild(sheet);
+    }, true);
+
     document.addEventListener('DOMContentLoaded', scan);
     new MutationObserver(scan).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-ad-id'] });
     setInterval(flush, 5000);

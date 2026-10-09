@@ -61,6 +61,12 @@ class AdCampaign extends Model
         'expired_at' => 'datetime',
         'reason_codes' => 'array',
         'auto_flags' => 'array',
+        'targeting' => 'array',
+        'exclusive_category' => 'boolean',
+        'link_checked_at' => 'datetime',
+        'licence_warned_at' => 'datetime',
+        'weekly_report_at' => 'datetime',
+        'final_report_at' => 'datetime',
         'inter_state' => 'boolean',
         'needs_second_approval' => 'boolean',
         'auto_approve' => 'boolean',
@@ -94,6 +100,16 @@ class AdCampaign extends Model
     public function invoices(): HasMany
     {
         return $this->hasMany(Invoice::class, 'ad_campaign_id');
+    }
+
+    public function coupon(): BelongsTo
+    {
+        return $this->belongsTo(AdCoupon::class, 'coupon_id');
+    }
+
+    public function reports(): HasMany
+    {
+        return $this->hasMany(AdReport::class, 'campaign_id');
     }
 
     public function renewedFrom(): BelongsTo
@@ -131,7 +147,12 @@ class AdCampaign extends Model
             self::PENDING_PAYMENT => 'Awaiting payment',
             self::IN_REVIEW => 'In review',
             self::CHANGES_REQUESTED => 'Changes requested',
-            self::PAUSED => 'Paused',
+            self::PAUSED => match ($this->paused_reason) {
+                'reports' => 'Paused · reported',
+                'licence' => 'Paused · licence expired',
+                'link' => 'Paused · link broken',
+                default => 'Paused',
+            },
             self::EXPIRED => 'Expired',
             self::REJECTED => $this->refunded_at ? 'Rejected · refunded' : 'Rejected',
             self::CANCELLED => $this->refunded_at ? 'Cancelled · refunded' : 'Cancelled',

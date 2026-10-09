@@ -5,22 +5,26 @@ namespace App\Http\Controllers\Customer;
 use App\Http\Controllers\Controller;
 use App\Models\AdAdvertiser;
 use App\Models\AdCampaign;
+use App\Models\AdBundle;
 use App\Models\AdCategory;
+use App\Models\AdCoupon;
 use App\Models\AdLicence;
 use App\Models\AdPlacement;
 use App\Models\AdReview;
 use App\Models\Invoice;
+use App\Models\SightSeeingPackages;
 use App\Services\Ads\AdAvailability;
 use App\Services\Ads\AdCampaignService;
 use App\Services\Ads\AdCreativeProcessor;
 use App\Services\Ads\AdPaymentService;
 use App\Services\Ads\AdPricing;
+use App\Services\Ads\AdReporting;
 use App\Services\Ads\AdServer;
 use App\Services\Ads\AdSettings;
+use App\Services\Ads\AdTargeting;
 use App\Support\Gstin;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
@@ -119,7 +123,21 @@ class AdvertiseController extends Controller
                 'discount_14' => (float) $settings[AdSettings::DISCOUNT_14],
                 'discount_30' => (float) $settings[AdSettings::DISCOUNT_30],
                 'gst_rate' => (float) $settings[AdSettings::GST_RATE],
+                'exclusivity_percent' => (float) $settings[AdSettings::EXCLUSIVITY_PERCENT],
+                'launch_percent' => AdSettings::launchPercent($settings),
+                'launch_until' => $settings[AdSettings::LAUNCH_UNTIL],
+                'first_booking' => !$advertiser || !AdCampaign::where('advertiser_id', $advertiser->id)->whereNotNull('paid_at')->exists(),
             ],
+            'targetingOptions' => [
+                'areas' => AdTargeting::AREAS,
+                'trips' => AdTargeting::TRIPS,
+                'days' => AdTargeting::DAYS,
+                'page_groups' => collect(AdTargeting::PAGE_GROUPS)->map(fn ($g) => $g['label']),
+            ],
+            'packages' => SightSeeingPackages::orderBy('title')->get(['id', 'title'])->map(fn ($p) => ['id' => $p->id, 'title' => $p->title]),
+            'bundles' => AdBundle::where('active', true)->get()->map(fn ($b) => [
+                'name' => $b->name, 'codes' => $b->placement_codes, 'price_standard' => $b->price_standard, 'price_premium' => $b->price_premium,
+            ]),
             'checklist' => self::CHECKLIST,
         ]);
     }
@@ -131,7 +149,7 @@ class AdvertiseController extends Controller
 
         return view('customer.ads.show', [
             'campaign' => $campaign,
-            'stats' => $this->stats($campaign),
+            'stats' => app(AdReporting::class)->stats($campaign),
             'invoices' => $campaign->invoices->where('status', Invoice::ISSUED)->values(),
             'reasons' => collect($campaign->reason_codes ?? [])->map(fn ($c) => AdCampaign::REASON_CODES[$c] ?? $c)->all(),
         ]);
@@ -223,18 +241,51 @@ class AdvertiseController extends Controller
         $to = now('Asia/Kolkata')->addDays(120)->toDateString();
         $placements = AdPlacement::active()->whereIn('id', $ids)->get();
         $exclude = $request->filled('campaign') ? (int) $request->input('campaign') : null;
+        $groups = array_values(array_intersect((array) $request->input('page_groups', []), array_keys(AdTargeting::PAGE_GROUPS)));
 
-        return response()->json(['status' => true, 'data' => AdAvailability::soldOut($placements, $from, $to, $exclude)]);
+        return response()->json(['status' => true, 'data' => AdAvailability::soldOut($placements, $from, $to, $exclude, $groups)]);
     }
 
     public function quote(Request $request)
     {
         $advertiser = AdAdvertiser::with('category')->where('user_id', Auth::guard('customer')->id())->first();
-        $request->validate(['placements' => 'required|array|min:1', 'days' => 'required|integer|min:1|max:366']);
+        $request->validate([
+            'placements' => 'required|array|min:1',
+            'days' => 'required|integer|min:1|max:366',
+            'start_date' => 'nullable|date_format:Y-m-d',
+            'page_groups' => 'nullable|array',
+            'exclusive_category' => 'nullable|boolean',
+            'coupon_code' => 'nullable|string|max:30',
+            'campaign' => 'nullable|integer',
+        ]);
         $placements = AdPlacement::active()->whereIn('id', array_map('intval', $request->input('placements')))->get();
-        $quote = AdPricing::quote($placements, optional($advertiser?->category)->tier ?? AdCategory::STANDARD, (int) $request->input('days'), $advertiser?->gstin);
+        $coupon = AdCoupon::findCode($request->input('coupon_code'));
+        $firstBooking = !$advertiser || !AdCampaign::where('advertiser_id', $advertiser->id)->whereNotNull('paid_at')
+            ->when($request->filled('campaign'), fn ($q) => $q->where('id', '!=', (int) $request->input('campaign')))->exists();
+        $quote = AdPricing::quote($placements, optional($advertiser?->category)->tier ?? AdCategory::STANDARD, (int) $request->input('days'), $advertiser?->gstin, null, [
+            'start_date' => $request->input('start_date'),
+            'units' => AdCampaignService::unitsFor($placements, ['page_groups' => (array) $request->input('page_groups', [])]),
+            'exclusive_category' => $request->boolean('exclusive_category'),
+            'coupon' => $coupon,
+            'first_booking' => $firstBooking,
+        ]);
+        if ($request->filled('coupon_code')) {
+            $quote['coupon_error'] = !$coupon ? 'That coupon code was not found.'
+                : ($advertiser ? $coupon->problemFor($advertiser, (int) $quote['list_amount'], $request->filled('campaign') ? (int) $request->input('campaign') : null) : null);
+        }
 
         return response()->json(['status' => true, 'data' => $quote]);
+    }
+
+    /** Results by day and placement as CSV. */
+    public function export(AdCampaign $campaign)
+    {
+        $this->own($campaign);
+
+        return response(app(AdReporting::class)->csv($campaign), 200, [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="ad-' . $campaign->reference . '-results.csv"',
+        ]);
     }
 
     /** Create (no id) or update a draft. */
@@ -253,13 +304,22 @@ class AdvertiseController extends Controller
             'days' => 'required|integer|min:1|max:366',
             'landing_type' => 'required|in:website,whatsapp,call',
             'landing_value' => 'nullable|string|max:500',
+            'targeting' => 'nullable|array',
+            'headline' => 'nullable|string|max:60',
+            'exclusive_category' => 'nullable|boolean',
+            'coupon_code' => 'nullable|string|max:30',
         ]);
         if ($campaign && $campaign->status === AdCampaign::PENDING_PAYMENT && !$campaign->isPaid()) {
             $campaign->forceFill(['status' => AdCampaign::DRAFT, 'hold_expires_at' => null])->save();
         }
 
         try {
-            $campaign = $this->ads->saveDraft($campaign, $advertiser, $data['placements'], $data['start_date'], (int) $data['days'], $data['landing_type'], (string) ($data['landing_value'] ?? ''));
+            $campaign = $this->ads->saveDraft($campaign, $advertiser, $data['placements'], $data['start_date'], (int) $data['days'], $data['landing_type'], (string) ($data['landing_value'] ?? ''), [
+                'targeting' => (array) ($data['targeting'] ?? []),
+                'headline' => $data['headline'] ?? null,
+                'exclusive_category' => $request->boolean('exclusive_category'),
+                'coupon_code' => $data['coupon_code'] ?? null,
+            ]);
         } catch (RuntimeException $e) {
             return response()->json(['status' => false, 'message' => $e->getMessage()], 422);
         }
@@ -467,9 +527,19 @@ class AdvertiseController extends Controller
             'days' => (int) $campaign->days,
             'landing_type' => $campaign->landing_type,
             'landing_value' => $landingValue,
+            'targeting' => $campaign->targeting ?? (object) [],
+            'headline' => $campaign->headline,
+            'exclusive_category' => (bool) $campaign->exclusive_category,
+            'coupon_code' => $campaign->coupon_code,
             'creatives' => $campaign->creatives->mapWithKeys(fn ($c) => [$c->shape => ['url' => $c->url(), 'bytes' => $c->bytes]]),
             'quote' => [
+                'days' => (int) $campaign->days,
                 'list_amount' => (int) $campaign->list_amount,
+                'peak_amount' => (int) $campaign->peak_amount,
+                'bundle_discount' => (int) $campaign->bundle_discount,
+                'exclusivity_amount' => (int) $campaign->exclusivity_amount,
+                'promo_discount' => (int) $campaign->promo_discount,
+                'promo_label' => $campaign->promo_label,
                 'discount_percent' => (float) $campaign->discount_percent,
                 'discount_amount' => (int) $campaign->discount_amount,
                 'net_amount' => (int) $campaign->net_amount,
@@ -482,45 +552,6 @@ class AdvertiseController extends Controller
             ],
             'reasons' => collect($campaign->reason_codes ?? [])->map(fn ($c) => AdCampaign::REASON_CODES[$c] ?? $c)->values(),
             'review_note' => $campaign->status === AdCampaign::CHANGES_REQUESTED ? $campaign->review_note : null,
-        ];
-    }
-
-    /** Results for "My ads": impressions, clicks, CTR by placement and by day. */
-    private function stats(AdCampaign $campaign): array
-    {
-        $adIds = $campaign->items->pluck('advertisement_id')->filter()->values();
-        if ($adIds->isEmpty()) {
-            return ['views' => 0, 'clicks' => 0, 'ctr' => null, 'placements' => [], 'days' => []];
-        }
-        $byAd = $campaign->items->filter(fn ($i) => $i->advertisement_id)->keyBy('advertisement_id');
-
-        $views = DB::table('advertisement_impressions')->whereIn('advertisement_id', $adIds)
-            ->groupBy('advertisement_id', 'date')->selectRaw('advertisement_id, date, SUM(views) as views')->get();
-        $clicks = DB::table('advertisement_user_clicks')->whereIn('advertisement_id', $adIds)
-            ->groupBy('advertisement_id', DB::raw('DATE(created_at)'))->selectRaw('advertisement_id, DATE(created_at) as date, COUNT(*) as clicks')->get();
-
-        $placements = [];
-        $days = [];
-        foreach ($views as $row) {
-            $code = $byAd[$row->advertisement_id]->placement->code ?? '—';
-            $placements[$code]['views'] = ($placements[$code]['views'] ?? 0) + $row->views;
-            $days[$row->date]['views'] = ($days[$row->date]['views'] ?? 0) + $row->views;
-        }
-        foreach ($clicks as $row) {
-            $code = $byAd[$row->advertisement_id]->placement->code ?? '—';
-            $placements[$code]['clicks'] = ($placements[$code]['clicks'] ?? 0) + $row->clicks;
-            $days[$row->date]['clicks'] = ($days[$row->date]['clicks'] ?? 0) + $row->clicks;
-        }
-        krsort($days);
-        $totalViews = array_sum(array_column($placements, 'views'));
-        $totalClicks = array_sum(array_column($placements, 'clicks'));
-
-        return [
-            'views' => $totalViews,
-            'clicks' => $totalClicks,
-            'ctr' => $totalViews > 0 ? round($totalClicks * 100 / $totalViews, 2) : null,
-            'placements' => $placements,
-            'days' => array_slice($days, 0, 31, true),
         ];
     }
 }

@@ -48,7 +48,7 @@ class AdvertisementController extends ResponseController
 
             if ($request->filled('screen')) {
                 $screen = (int) $request->screen;
-                $ads = AdServer::onScreen($query, $screen)->orderByDesc('id')->get();
+                $ads = AdServer::targeted(AdServer::onScreen($query, $screen)->orderByDesc('id')->get());
                 if ($ads->isEmpty()) {
                     $ads = AdServer::forScreen($screen);
                 }
@@ -72,7 +72,7 @@ class AdvertisementController extends ResponseController
                 array_map('intval', (array) json_decode((string) $ad->screens, true)),
                 AdServer::PWA_ONLY_SCREENS
             ) !== [];
-            $allAds = $query->orderByDesc('id')->get()->filter($legacyOnly)->values();
+            $allAds = AdServer::targeted($query->orderByDesc('id')->get()->filter($legacyOnly));
             $bottomAds = $allAds->filter($isBottom)->values();
             $topAds = $allAds->reject($isBottom)->values();
 

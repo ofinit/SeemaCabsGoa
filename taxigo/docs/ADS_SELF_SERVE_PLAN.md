@@ -1,6 +1,6 @@
 # Seema Cabs Goa — Self-Serve Advertising: End-to-End Plan
 
-**Status:** Phase 0 and Phase 1 built (see §21) · **Revision 3** (consolidated;
+**Status:** Phases 0, 1 and 2 built (see §21) · **Revision 3** (consolidated;
 replaces revisions 1–2) · **Owners:** Seema Holidays (seller of ad space) and
 OfinIT Solutions Pvt. Ltd. (platform)
 
@@ -539,15 +539,25 @@ signed click redirect with UTM; viewable impressions; no click GPS.
 | Serving: approval creates one `advertisements` row per placement, so the Phase 0 server, mobile API and tracking are reused. New PWA slots: home inline (P2), booking confirmed (P5), driver details (P6), ride complete (P7), rides & account (P8), finding-a-taxi large card (P12) and full screen (P13) | `AdServer`, `customer.components.ad-slot` |
 | Expiry, 3-day renewal reminder, renewals with the same image and link go live without re-review | `ads:maintain` (hourly) |
 
-**Deferred to Phase 2:** targeting (area, trip type, platform, days / hours),
-bundles, peak pricing, exclusivity add-on, launch offer, coupons; phone OTP
-for the advertiser profile (the logged-in customer account is used); NSFW
-detection and Google Safe Browsing (keyword, shortener, duplicate-image and
-link checks are in); 1× / 2× image variants; frequency cap; Report-ad button
-and auto-pause on reports; licence-expiry auto-pause; weekly / final report
-emails and CSV / PDF export; GSTR-1 split of ad invoices by section beyond
-the existing export; P14–P18 placements. Older Android / iOS builds keep the
-unchanged API and never receive the new PWA-only shapes (P2, P12, P13).
+**Phase 2 (built):**
+
+| Group | What | Where |
+|---|---|---|
+| A. Placements | P15 airport arrivals (airport pickups only), P14 sightseeing sponsored stop (on the chosen package), P16 app-open sponsor (splash, logo + one line, exclusive), P9 website pages (priced per page group: airport, nightlife, north, south, sightseeing, general), P10 booking / invoice email footer | migration `2026_10_11_000001`; `public/js/seema-ads.js` on 19 marketing pages; `mail.partials.ad-footer` |
+| B. Pricing | Peak windows (×multiplier per day), bundles (finding-a-taxi, booking journey) applied when cheaper, category exclusivity +50%, launch offer (% off the first ad, until a date), coupons (% or ₹, limits, dates, first-ad-only); launch offer and coupon don't stack | `AdPricing`, Admin → Placements & Pricing |
+| C. Safety | "Sponsored ⓘ" → report sheet (PWA) / "Report this ad" (website); auto-pause after N reports from different people; Admin → Ad Reports (dismiss → resume, uphold → stay paused); licence-expiry pause + 7-day warning; daily link check (2 failures → pause); targeting by area, trip type, days, hours | `AdCampaignService`, `AdTargeting` |
+| D. Reporting | Weekly results email (Mondays 10:00), final results email at expiry, CSV export (advertiser and admin), Admin → Ad Dashboard (revenue split, offers given, fill rate, top advertisers, review SLA, reports, failed splits) | `AdReporting`, `ads:weekly-reports` |
+
+Area and trip-type targeting apply where the booking is known (trip
+screens); day and hour apply everywhere. The P9 sidebar (6:5) and strip
+(8:1) shapes were replaced by one 3:1 banner that works on phones and
+desktops. P10 has no price in §5.2; it starts at ₹49 / ₹149 per day.
+
+**Still open:** phone OTP for the advertiser profile (the logged-in customer
+account is used); NSFW detection and Google Safe Browsing; 1× / 2× image
+variants; frequency cap; Phase 3 items (P18 QR, P11 push, native app
+placements, conversion tracking, agencies). Older Android / iOS builds keep
+the unchanged API and never receive the PWA-only shapes.
 
 **Operations:** add the Coolify volume `/var/www/html/storage/app/ads`
 (licences and original images, private) and keep the scheduler running.

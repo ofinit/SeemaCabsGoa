@@ -289,6 +289,15 @@ Route::group(['prefix' => 'admin', 'middleware' => ['auth', 'TwoFa'], 'as' => 'a
             Route::post('/advertisers/{advertiser}', 'updateAdvertiser')->name('advertisers.update');
             Route::get('/licences/{licence}', 'licence')->name('licences.show');
             Route::post('/licences/{licence}', 'verifyLicence')->name('licences.verify');
+            Route::get('/dashboard', 'dashboard')->name('dashboard');
+            Route::get('/reports', 'reports')->name('reports');
+            Route::post('/reports/{advertisement}', 'resolveReports')->name('reports.resolve');
+            Route::post('/bundles', 'saveBundles')->name('bundles.save');
+            Route::post('/peaks', 'addPeak')->name('peaks.add');
+            Route::post('/peaks/{rule}/delete', 'deletePeak')->name('peaks.delete');
+            Route::post('/coupons', 'addCoupon')->name('coupons.add');
+            Route::post('/coupons/{coupon}/toggle', 'toggleCoupon')->name('coupons.toggle');
+            Route::get('/{campaign}/results.csv', 'export')->whereNumber('campaign')->name('export');
             Route::get('/{campaign}', 'show')->whereNumber('campaign')->name('show');
             Route::post('/{campaign}/decide', 'decide')->whereNumber('campaign')->name('decide');
             Route::post('/{campaign}/pause', 'pause')->whereNumber('campaign')->name('pause');

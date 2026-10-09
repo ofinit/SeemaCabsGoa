@@ -245,7 +245,12 @@
                     </div>
                 </div>
                 <a :href="'/app/trip/' + bookingId" class="btn-primary w-full py-3 text-sm font-bold">View Trip Details</a>
-                @include('customer.components.ad-slot', ['screen' => \App\Services\Ads\AdServer::SCREEN_BOOKING_CONFIRMED, 'class' => 'mt-4 text-left'])
+                <template x-if="draft && draft.trip_type == 1">
+                    <div>@include('customer.components.ad-slot', ['screen' => \App\Services\Ads\AdServer::SCREEN_AIRPORT_ARRIVALS, 'class' => 'mt-4 text-left', 'context' => ['trip' => 'airport_pickup']])</div>
+                </template>
+                <template x-if="!draft || draft.trip_type != 1">
+                    <div>@include('customer.components.ad-slot', ['screen' => \App\Services\Ads\AdServer::SCREEN_BOOKING_CONFIRMED, 'class' => 'mt-4 text-left'])</div>
+                </template>
             </div>
         </div>
     </template>

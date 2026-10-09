@@ -114,7 +114,27 @@
                     </div>
                 </button>
             </template>
-            <button type="button" class="btn-primary w-full" @click="next()" :disabled="!selected.length">Continue</button>
+            <template x-if="hasCode('P14')">
+                <div class="card space-y-2">
+                    <label class="field-label">P14 — which sightseeing package is your business on?</label>
+                    <select class="field-input" x-model.number="packageId" :disabled="locked">
+                        <option value="">Choose a package</option>
+                        <template x-for="pk in packages" :key="pk.id"><option :value="pk.id" x-text="pk.title" :selected="pk.id == packageId"></option></template>
+                    </select>
+                </div>
+            </template>
+            <template x-if="hasCode('P9')">
+                <div class="card space-y-2">
+                    <p class="field-label">P9 — website pages (priced per group)</p>
+                    <template x-for="(label, key) in targetingOptions.page_groups" :key="key">
+                        <label class="flex items-center gap-2 text-sm"><input type="checkbox" class="rounded" :value="key" x-model="pageGroups" :disabled="locked" @change="loadAvailability(); refreshQuote()"> <span x-text="label"></span></label>
+                    </template>
+                </div>
+            </template>
+            <template x-for="b in bundleHints" :key="b.name">
+                <p class="text-xs text-success" x-text="'Bundle price applied: ' + b.name + ' (' + b.codes.join(' + ') + ')'"></p>
+            </template>
+            <button type="button" class="btn-primary w-full" @click="next()" :disabled="!selected.length || (hasCode('P14') && !packageId) || (hasCode('P9') && !pageGroups.length)">Continue</button>
         </section>
 
         {{-- STEP: Dates --}}
@@ -145,9 +165,56 @@
                 </div>
             </template>
 
+            <label class="card flex items-start gap-3 text-sm" x-show="!locked">
+                <input type="checkbox" class="rounded mt-0.5" x-model="exclusive" @change="refreshQuote()">
+                <span><strong>Category exclusivity</strong> (+<span x-text="rules.exclusivity_percent"></span>%) — no other
+                    <span x-text="category ? category.name : 'business of your category'"></span> ad on these placements and days.</span>
+            </label>
+
             <div class="card" x-show="quote">@include('customer.ads.partials.quote')</div>
 
             <button type="button" class="btn-primary w-full" @click="saveDraftAndNext()" :disabled="busy || conflicts.length || days < rules.min_days || !startDate">Continue</button>
+        </section>
+
+        {{-- STEP: Targeting --}}
+        <section x-show="step === 'targeting'" class="space-y-3">
+            <div class="card space-y-3">
+                <h2 class="font-semibold text-ink">Who sees your ad <span class="text-muted font-normal text-sm">(optional)</span></h2>
+                <p class="text-xs text-muted">Leave everything empty to show your ad to everyone. Area and trip type apply on the trip screens, where we know the booking; day and time apply everywhere.</p>
+                <div>
+                    <p class="field-label">Area</p>
+                    <div class="flex gap-2 flex-wrap">
+                        <template x-for="(label, key) in targetingOptions.areas" :key="key">
+                            <label class="btn-outline !px-3 !py-2 text-sm cursor-pointer" :class="target.areas.includes(key) && 'ring-2 ring-gold'"><input type="checkbox" class="hidden" :value="key" x-model="target.areas" :disabled="locked"><span x-text="label"></span></label>
+                        </template>
+                    </div>
+                </div>
+                <div>
+                    <p class="field-label">Trip type</p>
+                    <div class="flex gap-2 flex-wrap">
+                        <template x-for="(label, key) in targetingOptions.trips" :key="key">
+                            <label class="btn-outline !px-3 !py-2 text-sm cursor-pointer" :class="target.trips.includes(key) && 'ring-2 ring-gold'"><input type="checkbox" class="hidden" :value="key" x-model="target.trips" :disabled="locked"><span x-text="label"></span></label>
+                        </template>
+                    </div>
+                </div>
+                <div>
+                    <p class="field-label">Days</p>
+                    <div class="flex gap-1.5 flex-wrap">
+                        <template x-for="d in [1,2,3,4,5,6,0]" :key="d">
+                            <label class="btn-outline !px-3 !py-2 text-sm cursor-pointer" :class="target.days.includes(String(d)) && 'ring-2 ring-gold'"><input type="checkbox" class="hidden" :value="String(d)" x-model="target.days" :disabled="locked"><span x-text="targetingOptions.days[d]"></span></label>
+                        </template>
+                    </div>
+                </div>
+                <div>
+                    <p class="field-label">Time of day</p>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="time" class="field-input" x-model="target.from" :disabled="locked">
+                        <input type="time" class="field-input" x-model="target.to" :disabled="locked">
+                    </div>
+                    <p class="text-xs text-muted mt-1">e.g. 18:00 to 02:00 for evenings and late nights. Leave empty for all day.</p>
+                </div>
+            </div>
+            <button type="button" class="btn-primary w-full" @click="saveDraftAndNext()" :disabled="busy">Continue</button>
         </section>
 
         {{-- STEP: Creative --}}
@@ -196,6 +263,14 @@
                 </div>
             </div>
 
+            <template x-if="hasCode('P16')">
+                <div class="card space-y-2">
+                    <label class="field-label">App-open message (P16, up to 40 characters)</label>
+                    <input class="field-input" x-model="headline" maxlength="40" placeholder="e.g. Live music tonight at Club X">
+                    <p class="text-xs text-muted">Shown as "Presented by" with your square logo when the app opens.</p>
+                </div>
+            </template>
+
             <div class="card space-y-3">
                 <h2 class="font-semibold text-ink">When people tap your ad</h2>
                 <div class="grid grid-cols-3 gap-2">
@@ -208,7 +283,7 @@
                 <p class="text-xs text-muted" x-show="landingType === 'whatsapp'">Opens WhatsApp with "Hi, I saw your ad on Seema Cabs Goa".</p>
             </div>
 
-            <button type="button" class="btn-primary w-full" @click="saveDraftAndNext()" :disabled="busy || !allCreatives || !landingValue">Continue</button>
+            <button type="button" class="btn-primary w-full" @click="saveDraftAndNext()" :disabled="busy || !allCreatives || !landingValue || (hasCode('P16') && !headline)">Continue</button>
         </section>
 
         {{-- STEP: Checklist --}}
@@ -235,6 +310,12 @@
                 <p class="text-sm text-ink"><strong x-text="selectedPlacements.map(p => p.code + ' ' + p.name).join(', ')"></strong></p>
                 <p class="text-sm text-muted" x-text="fmtDate(startDate) + ' – ' + fmtDate(endDate) + ' · ' + days + ' days'"></p>
                 <div class="pt-2 border-t border-black/[0.05]">@include('customer.ads.partials.quote')</div>
+                <div class="pt-2 flex gap-2" x-show="!locked">
+                    <input class="field-input uppercase !py-2.5" x-model="couponCode" placeholder="Coupon code" maxlength="30">
+                    <button type="button" class="btn-outline !py-2.5 text-sm shrink-0" @click="applyCoupon()" :disabled="busy">Apply</button>
+                </div>
+                <p class="text-xs text-danger" x-show="couponError" x-text="couponError"></p>
+                <p class="text-xs text-muted" x-show="quote && quote.coupon_note" x-text="quote && quote.coupon_note"></p>
                 <p class="text-xs text-muted">Your slots are held for 15 minutes while you pay. If your ad isn't approved, you get a full refund automatically.</p>
             </div>
 
@@ -294,10 +375,15 @@ function adWizard() {
         placements: @js($placements),
         rules: @js($rules),
         campaign: @js($campaign),
+        targetingOptions: @js($targetingOptions),
+        packages: @js($packages),
+        bundles: @js($bundles),
         steps: [
             { key: 'business', label: 'Business' }, { key: 'placements', label: 'Placements' }, { key: 'dates', label: 'Dates' },
-            { key: 'creative', label: 'Image & link' }, { key: 'checklist', label: 'Checklist' }, { key: 'pay', label: 'Pay' },
+            { key: 'targeting', label: 'Audience' }, { key: 'creative', label: 'Image & link' }, { key: 'checklist', label: 'Checklist' }, { key: 'pay', label: 'Pay' },
         ],
+        target: { areas: [], trips: [], days: [], from: '', to: '' },
+        packageId: '', pageGroups: [], headline: '', exclusive: false, couponCode: '', couponError: '',
         step: 'business',
         today,
         selected: [], startDate: '', days: 7,
@@ -325,6 +411,13 @@ function adWizard() {
                 this.creatives = this.campaign.creatives || {};
                 this.quote = this.campaign.quote;
                 if (Array.isArray(this.creatives)) this.creatives = {};
+                const t = this.campaign.targeting || {};
+                this.target = { areas: t.areas || [], trips: t.trips || [], days: (t.days || []).map(String), from: (t.hours || {}).from || '', to: (t.hours || {}).to || '' };
+                this.packageId = t.package_id || '';
+                this.pageGroups = t.page_groups || [];
+                this.headline = this.campaign.headline || '';
+                this.exclusive = !!this.campaign.exclusive_category;
+                this.couponCode = this.campaign.coupon_code || '';
             }
             this.days = Math.max(this.days, this.rules.min_days);
             this.step = !this.hasProfile ? 'business' : (this.locked ? 'creative' : (this.campaign ? 'dates' : 'placements'));
@@ -348,6 +441,19 @@ function adWizard() {
             return Object.values(map);
         },
         get allCreatives() { return this.shapes.every(s => this.creatives[s.key]); },
+        get bundleHints() {
+            const codes = this.selectedPlacements.map(p => p.code);
+            return this.bundles.filter(b => b.codes.every(c => codes.includes(c)));
+        },
+        hasCode(code) { return this.selectedPlacements.some(p => p.code === code); },
+        targetingPayload() {
+            return {
+                areas: this.target.areas, trips: this.target.trips, days: this.target.days,
+                hours: (this.target.from && this.target.to) ? { from: this.target.from, to: this.target.to } : null,
+                package_id: this.hasCode('P14') ? this.packageId : null,
+                page_groups: this.hasCode('P9') ? this.pageGroups : [],
+            };
+        },
         get allTicked() { return @js(array_keys($checklist)).every(k => this.ticks[k]); },
         get conflicts() {
             if (!this.startDate || this.locked) return [];
@@ -386,6 +492,7 @@ function adWizard() {
             this.error = '';
             const i = this.stepIndex;
             if (this.step === 'placements') { this.loadAvailability(); this.refreshQuote(); }
+            if (this.step === 'dates' && this.locked) { /* paid: dates fixed */ }
             this.step = this.steps[Math.min(i + 1, this.steps.length - 1)].key;
             window.scrollTo(0, 0);
         },
@@ -426,18 +533,27 @@ function adWizard() {
         },
         async loadAvailability() {
             if (!this.selected.length) return;
-            const q = this.selected.map(id => 'placements[]=' + id).join('&') + (this.campaign ? '&campaign=' + this.campaign.id : '');
+            const q = this.selected.map(id => 'placements[]=' + id).join('&') + (this.campaign ? '&campaign=' + this.campaign.id : '')
+                + (this.hasCode('P9') ? this.pageGroups.map(g => '&page_groups[]=' + encodeURIComponent(g)).join('') : '');
             try { const res = await apiFetch(routes.availability + '?' + q); this.soldOut = res.data || {}; } catch (e) { /* non-critical */ }
         },
         async refreshQuote() {
             if (!this.selected.length || this.days < 1) return;
             try {
-                const res = await apiFetch(routes.quote, { method: 'POST', body: { placements: this.selected, days: this.days } });
+                const res = await apiFetch(routes.quote, { method: 'POST', body: {
+                    placements: this.selected, days: this.days, start_date: this.startDate,
+                    page_groups: this.hasCode('P9') ? this.pageGroups : [], exclusive_category: this.exclusive,
+                    coupon_code: this.couponCode || null, campaign: this.campaign ? this.campaign.id : null,
+                } });
                 this.quote = res.data;
+                this.couponError = res.data.coupon_error || '';
             } catch (e) { /* shown at checkout */ }
         },
         async saveDraft() {
-            const body = { placements: this.selected, start_date: this.startDate, days: this.days, landing_type: this.landingType, landing_value: this.landingValue };
+            const body = {
+                placements: this.selected, start_date: this.startDate, days: this.days, landing_type: this.landingType, landing_value: this.landingValue,
+                targeting: this.targetingPayload(), headline: this.headline, exclusive_category: this.exclusive, coupon_code: this.couponError ? null : (this.couponCode || null),
+            };
             const url = this.campaign ? routes.base + '/' + this.campaign.id : routes.store;
             const res = await apiFetch(url, { method: 'POST', body });
             this.campaign = res.data;
@@ -508,6 +624,14 @@ function adWizard() {
                 }
             } catch (e) { /* defaults */ }
         },
+        async applyCoupon() {
+            this.busy = true; this.error = ''; this.couponError = '';
+            try {
+                await this.refreshQuote();
+                if (!this.couponError) await this.saveDraft();
+            } catch (e) { this.couponError = e.message; }
+            this.busy = false;
+        },
         async resubmit() {
             this.busy = true; this.error = '';
             try {
@@ -530,6 +654,7 @@ function adWizard() {
         async pay() {
             this.busy = true; this.error = '';
             try {
+                if (!this.locked) await this.saveDraft();
                 const res = await apiFetch(routes.base + '/' + this.campaign.id + '/checkout', { method: 'POST', body: { gateway: this.gateway, checklist: this.ticks } });
                 const order = res.data;
                 if (this.gateway === 'cashfree') {

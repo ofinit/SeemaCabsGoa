@@ -29,5 +29,6 @@
             </td>
         </tr>
     </table>
+    @include('mail.partials.ad-footer')
 </body>
 </html>

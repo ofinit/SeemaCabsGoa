@@ -14,5 +14,8 @@ class VerifyCsrfToken extends Middleware
     protected $except = [
         'api/razorpay/webhook',
         'api/cashfree/webhook',
+        // Website ad beacons from the static marketing pages (no session / token there).
+        'ads/i',
+        'ads/report',
     ];
 }

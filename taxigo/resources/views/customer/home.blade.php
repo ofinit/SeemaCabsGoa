@@ -145,7 +145,7 @@
                            x-transition:leave-start="opacity-100"
                            x-transition:leave-end="opacity-0">
                             <img :src="ad.banner_image" class="w-full h-auto" alt="Advertisement">
-                            <span class="absolute top-1.5 right-1.5 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">Sponsored</span>
+                            <span class="ad-report absolute top-1.5 right-1.5 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white cursor-pointer" role="button" title="Why am I seeing this? / Report">Sponsored ⓘ</span>
                         </a>
                     </template>
                 </div>

@@ -14,6 +14,8 @@
 
         <template x-if="pkg">
             <div>
+                {{-- P14 sponsored stop on this package --}}
+                @include('customer.components.ad-slot', ['screen' => \App\Services\Ads\AdServer::SCREEN_SIGHTSEEING_STOP, 'class' => 'mb-4', 'context' => ['package_id' => (int) $packageId, 'trip' => 'sightseeing']])
                 <div class="rounded-card overflow-hidden mb-4">
                     <img :src="pkg.images[0]" class="w-full h-48 object-cover" alt="">
                 </div>

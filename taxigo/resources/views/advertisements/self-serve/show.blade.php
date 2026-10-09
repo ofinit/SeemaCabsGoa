@@ -36,6 +36,17 @@
                 <div class="alert alert-warning"><strong>High-risk category ({{ $category->name }}).</strong> Check the category rules carefully: {{ $category->rules }}</div>
             </div>
         @endif
+        @if ($campaign->reports->where('status', 'open')->isNotEmpty())
+            <div class="col-12">
+                <div class="alert alert-danger"><strong>{{ $campaign->reports->where('status', 'open')->count() }} open user report(s).</strong>
+                    <a href="{{ route('admin.advertisements.selfServe.reports') }}">Review reports</a></div>
+            </div>
+        @endif
+        @if ($campaign->paused_reason && $campaign->status === AdCampaign::PAUSED)
+            <div class="col-12">
+                <div class="alert alert-warning">Paused automatically: {{ ['reports' => 'user reports', 'licence' => 'licence expired', 'link' => 'link not opening', 'admin' => 'by an admin'][$campaign->paused_reason] ?? $campaign->paused_reason }}. Resume it from the box on the right once fixed.</div>
+            </div>
+        @endif
         @if ($campaign->auto_flags)
             <div class="col-12">
                 <div class="alert alert-warning"><strong>Automated checks flagged:</strong> {{ implode(' · ', $campaign->auto_flags) }}</div>
@@ -71,6 +82,9 @@
                         @endforeach
                     </div>
                     <hr>
+                    <p class="mb-1"><strong>Audience:</strong> {{ \App\Services\Ads\AdTargeting::describe($campaign->targeting) }}</p>
+                    @if ($campaign->headline)<p class="mb-1"><strong>App-open message:</strong> {{ $campaign->headline }}</p>@endif
+                    @if ($campaign->exclusive_category)<p class="mb-1"><strong>Category exclusivity</strong> booked.</p>@endif
                     <p class="mb-1"><strong>Link ({{ $campaign->landing_type }}):</strong>
                         @if ($campaign->landing_url)
                             <a href="{{ $campaign->landing_url }}" target="_blank" rel="noopener noreferrer">{{ $campaign->landing_url }}</a>
@@ -208,8 +222,20 @@
                         @foreach ($campaign->items as $item)
                             <tr><td>{{ $item->placement->code }} {{ $item->placement->name }}</td><td class="text-end">{{ AdCampaign::rupees($item->price_per_day) }} × {{ $item->days }}</td><td class="text-end">{{ AdCampaign::rupees($item->subtotal) }}</td></tr>
                         @endforeach
+                        @if ($campaign->peak_amount > 0)
+                            <tr><td colspan="2" class="text-muted">incl. peak-season pricing</td><td class="text-end text-muted">{{ AdCampaign::rupees($campaign->peak_amount) }}</td></tr>
+                        @endif
+                        @if ($campaign->bundle_discount > 0)
+                            <tr><td colspan="2">Bundle saving</td><td class="text-end">− {{ AdCampaign::rupees($campaign->bundle_discount) }}</td></tr>
+                        @endif
+                        @if ($campaign->exclusivity_amount > 0)
+                            <tr><td colspan="2">Category exclusivity</td><td class="text-end">+ {{ AdCampaign::rupees($campaign->exclusivity_amount) }}</td></tr>
+                        @endif
                         @if ($campaign->discount_amount > 0)
                             <tr><td colspan="2">Discount {{ (float) $campaign->discount_percent }}%</td><td class="text-end">− {{ AdCampaign::rupees($campaign->discount_amount) }}</td></tr>
+                        @endif
+                        @if ($campaign->promo_discount > 0)
+                            <tr><td colspan="2">{{ $campaign->promo_label }}</td><td class="text-end">− {{ AdCampaign::rupees($campaign->promo_discount) }}</td></tr>
                         @endif
                         <tr><td colspan="2">Net (taxable)</td><td class="text-end">{{ AdCampaign::rupees($campaign->net_amount) }}</td></tr>
                         <tr><td colspan="2">{{ $campaign->inter_state ? 'IGST' : 'CGST + SGST' }} {{ (float) $campaign->gst_rate }}%</td><td class="text-end">{{ AdCampaign::rupees($campaign->gstAmount()) }}</td></tr>
@@ -234,6 +260,18 @@
                     @endforeach
                 </div>
             </div>
+
+            @if ($campaign->isPaid())
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between"><h5 class="mb-0">Results</h5><a class="small" href="{{ route('admin.advertisements.selfServe.export', $campaign) }}">CSV</a></div>
+                    <div class="card-body small">
+                        <p class="mb-1">{{ number_format($stats['views']) }} views · {{ number_format($stats['clicks']) }} taps · tap rate {{ $stats['ctr'] === null ? '—' : $stats['ctr'] . '%' }}</p>
+                        @foreach ($stats['placements'] as $code => $row)
+                            <div>{{ $code }}: {{ number_format($row['views'] ?? 0) }} views, {{ number_format($row['clicks'] ?? 0) }} taps</div>
+                        @endforeach
+                    </div>
+                </div>
+            @endif
 
             @if (in_array($campaign->status, [AdCampaign::APPROVED, AdCampaign::PAUSED]))
                 <div class="card">

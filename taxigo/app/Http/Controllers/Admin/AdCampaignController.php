@@ -6,14 +6,21 @@ use App\Enums\Type;
 use App\Http\Controllers\Controller;
 use App\Models\AdAdvertiser;
 use App\Models\AdCampaign;
+use App\Models\AdBundle;
 use App\Models\AdCategory;
+use App\Models\AdCoupon;
 use App\Models\AdLicence;
 use App\Models\AdPlacement;
+use App\Models\AdPricingRule;
+use App\Models\AdReport;
+use App\Models\Advertisement;
 use App\Models\SettingChange;
 use App\Services\Ads\AdAvailability;
 use App\Services\Ads\AdCampaignService;
 use App\Services\Ads\AdPaymentService;
+use App\Services\Ads\AdReporting;
 use App\Services\Ads\AdSettings;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -103,7 +110,7 @@ class AdCampaignController extends Controller
     public function show(AdCampaign $campaign)
     {
         $this->authorizeAdmin();
-        $campaign->load('advertiser.category', 'advertiser.licences', 'advertiser.user', 'items.placement', 'items.advertisement', 'creatives', 'reviews.reviewer', 'invoices');
+        $campaign->load('advertiser.category', 'advertiser.licences', 'advertiser.user', 'items.placement', 'items.advertisement', 'creatives', 'reviews.reviewer', 'invoices', 'reports');
         $placements = $campaign->items->pluck('placement');
         $conflicts = $campaign->start_date
             ? AdAvailability::conflicts($placements, $campaign->start_date->toDateString(), $campaign->end_date->toDateString(), $campaign->id)
@@ -116,7 +123,67 @@ class AdCampaignController extends Controller
             'reasons' => AdCampaign::REASON_CODES,
             'conflicts' => $conflicts,
             'otherCampaigns' => $otherCampaigns,
+            'stats' => app(AdReporting::class)->stats($campaign),
         ]);
+    }
+
+    public function export(AdCampaign $campaign)
+    {
+        $this->authorizeAdmin();
+
+        return response(app(AdReporting::class)->csv($campaign), 200, [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="ad-' . $campaign->reference . '-results.csv"',
+        ]);
+    }
+
+    public function dashboard(Request $request)
+    {
+        $this->authorizeAdmin();
+        $month = $request->filled('month') && preg_match('/^\d{4}-\d{2}$/', $request->input('month'))
+            ? Carbon::createFromFormat('Y-m', $request->input('month'), 'Asia/Kolkata')->startOfMonth()
+            : now('Asia/Kolkata')->startOfMonth();
+
+        return view('advertisements.self-serve.dashboard', ['month' => $month] + app(AdReporting::class)->dashboard($month));
+    }
+
+    // ----------------------------------------------------------------- reports
+
+    public function reports(Request $request)
+    {
+        $this->authorizeAdmin();
+        $status = in_array($request->input('status'), [AdReport::OPEN, AdReport::DISMISSED, AdReport::ACTIONED], true) ? $request->input('status') : AdReport::OPEN;
+        $groups = AdReport::with('advertisement', 'campaign.advertiser')->where('status', $status)->latest('id')->limit(500)->get()
+            ->groupBy('advertisement_id');
+
+        return view('advertisements.self-serve.reports', ['groups' => $groups, 'status' => $status, 'reasons' => AdReport::REASONS]);
+    }
+
+    /** Dismiss (ad is fine — resume it if reports paused it) or uphold (keep it paused). */
+    public function resolveReports(Request $request, Advertisement $advertisement)
+    {
+        $this->authorizeAdmin();
+        $action = $request->input('action') === 'uphold' ? AdReport::ACTIONED : AdReport::DISMISSED;
+        AdReport::where('advertisement_id', $advertisement->id)->where('status', AdReport::OPEN)
+            ->update(['status' => $action, 'resolved_by' => Auth::id(), 'resolved_at' => now()]);
+
+        $campaign = $advertisement->ad_campaign_id ? AdCampaign::find($advertisement->ad_campaign_id) : null;
+        if ($action === AdReport::DISMISSED) {
+            if ($campaign && $campaign->status === AdCampaign::PAUSED && $campaign->paused_reason === 'reports') {
+                $this->ads->pause($campaign, Auth::id(), false, 'Reports reviewed — ad is fine');
+            } elseif (!$campaign && $advertisement->approval_status === Advertisement::PAUSED && str_contains((string) $advertisement->status_note, 'user reports')) {
+                $advertisement->forceFill(['approval_status' => Advertisement::APPROVED, 'status_changed_by' => Auth::id(), 'status_changed_at' => now(), 'status_note' => 'Reports dismissed'])->save();
+            }
+
+            return back()->with('success', 'Reports dismissed' . ($campaign ? " and {$campaign->reference} resumed if it was paused by reports." : '.'));
+        }
+        if ($campaign && $campaign->status === AdCampaign::APPROVED) {
+            $this->ads->pause($campaign, Auth::id(), true, 'Reports upheld by our team', 'reports');
+        } elseif (!$campaign && $advertisement->approval_status === Advertisement::APPROVED) {
+            $advertisement->forceFill(['approval_status' => Advertisement::PAUSED, 'status_changed_by' => Auth::id(), 'status_changed_at' => now(), 'status_note' => 'Paused: user reports upheld'])->save();
+        }
+
+        return back()->with('success', 'Reports upheld; the ad stays paused.' . ($campaign ? ' Open the ad to cancel and refund it if needed.' : ''));
     }
 
     public function decide(Request $request, AdCampaign $campaign)
@@ -235,6 +302,9 @@ class AdCampaignController extends Controller
         return view('advertisements.self-serve.placements', [
             'placements' => AdPlacement::orderBy('sort')->get(),
             'categories' => AdCategory::orderBy('sort')->get(),
+            'bundles' => AdBundle::orderBy('id')->get(),
+            'peaks' => AdPricingRule::orderBy('start_date')->get(),
+            'coupons' => AdCoupon::latest('id')->get(),
             'settings' => AdSettings::load(),
             'labels' => AdSettings::LABELS,
         ]);
@@ -276,6 +346,11 @@ class AdCampaignController extends Controller
         $rules = [
             AdSettings::ENABLED => 'required|in:0,1',
             AdSettings::SECOND_APPROVAL => 'required|in:0,1',
+            AdSettings::EXCLUSIVITY_PERCENT => 'required|numeric|min:0|max:300',
+            AdSettings::LAUNCH_PERCENT => 'required|numeric|min:0|max:100',
+            AdSettings::LAUNCH_UNTIL => 'nullable|date_format:Y-m-d',
+            AdSettings::REPORT_THRESHOLD => 'required|integer|min:1|max:50',
+            AdSettings::WEEKLY_REPORTS => 'required|in:0,1',
             AdSettings::SEEMA_PERCENT => 'required|numeric|min:0|max:100',
             AdSettings::GST_RATE => 'required|numeric|min:0|max:28',
             AdSettings::SAC_SEEMA => 'nullable|digits_between:4,8',
@@ -292,6 +367,99 @@ class AdCampaignController extends Controller
         }
 
         return back()->with('success', 'Ad settings saved.');
+    }
+
+    public function saveBundles(Request $request)
+    {
+        $this->authorizeAdmin();
+        $data = $request->validate([
+            'bundles' => 'required|array',
+            'bundles.*.price_standard' => 'required|numeric|min:0|max:1000000',
+            'bundles.*.price_premium' => 'required|numeric|min:0|max:1000000',
+            'bundles.*.active' => 'nullable|boolean',
+        ]);
+        foreach ($data['bundles'] as $id => $row) {
+            if ($bundle = AdBundle::find($id)) {
+                SettingChange::record("ad_bundle.{$bundle->code}.price_standard", $bundle->price_standard, (int) round($row['price_standard'] * 100));
+                SettingChange::record("ad_bundle.{$bundle->code}.price_premium", $bundle->price_premium, (int) round($row['price_premium'] * 100));
+                $bundle->fill([
+                    'price_standard' => (int) round($row['price_standard'] * 100),
+                    'price_premium' => (int) round($row['price_premium'] * 100),
+                    'active' => !empty($row['active']),
+                ])->save();
+            }
+        }
+
+        return back()->with('success', 'Bundles saved.');
+    }
+
+    public function addPeak(Request $request)
+    {
+        $this->authorizeAdmin();
+        $data = $request->validate([
+            'name' => 'required|string|max:80',
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+            'multiplier' => 'required|numeric|min:1|max:5',
+        ]);
+        $rule = AdPricingRule::create($data + ['active' => true]);
+        SettingChange::record("ad_peak.{$rule->id}", null, "{$rule->name} {$data['start_date']}→{$data['end_date']} ×{$data['multiplier']}");
+
+        return back()->with('success', 'Peak window added. It applies to ads not yet paid.');
+    }
+
+    public function deletePeak(AdPricingRule $rule)
+    {
+        $this->authorizeAdmin();
+        SettingChange::record("ad_peak.{$rule->id}", "{$rule->name} ×{$rule->multiplier}", null);
+        $rule->delete();
+
+        return back()->with('success', 'Peak window removed.');
+    }
+
+    public function addCoupon(Request $request)
+    {
+        $this->authorizeAdmin();
+        $data = $request->validate([
+            'code' => 'required|alpha_num:ascii|max:30|unique:ad_coupons,code',
+            'description' => 'nullable|string|max:150',
+            'type' => 'required|in:percent,flat',
+            'value' => 'required|numeric|min:1',
+            'max_uses' => 'nullable|integer|min:1',
+            'per_advertiser' => 'required|integer|min:1|max:100',
+            'min_amount' => 'nullable|numeric|min:0',
+            'valid_from' => 'nullable|date',
+            'valid_until' => 'nullable|date|after_or_equal:valid_from',
+            'first_booking_only' => 'nullable|boolean',
+        ]);
+        if ($data['type'] === 'percent' && $data['value'] > 100) {
+            return back()->with('error', 'A percentage coupon can be at most 100%.')->withInput();
+        }
+        $coupon = AdCoupon::create([
+            'code' => strtoupper($data['code']),
+            'description' => $data['description'] ?? null,
+            'type' => $data['type'],
+            'value' => $data['type'] === 'flat' ? (int) round($data['value'] * 100) : (int) $data['value'],
+            'max_uses' => $data['max_uses'] ?? null,
+            'per_advertiser' => $data['per_advertiser'],
+            'min_amount' => (int) round(((float) ($data['min_amount'] ?? 0)) * 100),
+            'valid_from' => $data['valid_from'] ?? null,
+            'valid_until' => $data['valid_until'] ?? null,
+            'first_booking_only' => $request->boolean('first_booking_only'),
+            'active' => true,
+        ]);
+        SettingChange::record("ad_coupon.{$coupon->code}", null, $coupon->label());
+
+        return back()->with('success', "Coupon {$coupon->code} created.");
+    }
+
+    public function toggleCoupon(AdCoupon $coupon)
+    {
+        $this->authorizeAdmin();
+        $coupon->forceFill(['active' => !$coupon->active])->save();
+        SettingChange::record("ad_coupon.{$coupon->code}.active", (int) !$coupon->active, (int) $coupon->active);
+
+        return back()->with('success', "Coupon {$coupon->code} " . ($coupon->active ? 'enabled.' : 'disabled.'));
     }
 
     public function saveCategories(Request $request)

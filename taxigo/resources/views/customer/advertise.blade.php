@@ -60,7 +60,7 @@
                         <a href="{{ $ad['click_url'] ?: ($ad['banner_url'] ?: '#') }}" target="_blank" rel="noopener sponsored"
                            data-ad-id="{{ $ad['id'] }}" data-ad-screen="0" class="block relative">
                             <img src="{{ $ad['banner_image'] }}" class="w-full h-auto" alt="Advertisement" loading="lazy">
-                            <span class="absolute top-1.5 right-1.5 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">Sponsored</span>
+                            <span class="ad-report absolute top-1.5 right-1.5 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white cursor-pointer" role="button" title="Why am I seeing this? / Report">Sponsored ⓘ</span>
                         </a>
                     @endforeach
                 </div>

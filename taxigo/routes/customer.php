@@ -52,6 +52,7 @@ Route::prefix('app')->name('customer.')->group(function () {
         Route::get('advertisements', [PageController::class, 'advertisementsJson'])->name('advertisements');
         Route::post('advertisement-click', [PageController::class, 'advertisementClick'])->name('advertisement-click');
         Route::post('ad-impressions', [\App\Http\Controllers\AdTrackingController::class, 'impressions'])->middleware('throttle:120,1')->name('ad-impressions');
+        Route::post('ad-report', [\App\Http\Controllers\AdTrackingController::class, 'report'])->middleware('throttle:10,1')->name('ad-report');
         Route::get('page-content/{slug}', [PageController::class, 'pageContentJson'])->name('page-content');
     });
 
@@ -76,6 +77,7 @@ Route::prefix('app')->name('customer.')->group(function () {
         Route::get('advertise/cashfree/return', [AdvertiseController::class, 'cashfreeReturn'])->name('ads.cashfree-return');
         Route::get('advertise/{campaign}', [AdvertiseController::class, 'show'])->whereNumber('campaign')->name('ads.show');
         Route::get('advertise/{campaign}/edit', [AdvertiseController::class, 'edit'])->whereNumber('campaign')->name('ads.edit');
+        Route::get('advertise/{campaign}/results.csv', [AdvertiseController::class, 'export'])->whereNumber('campaign')->name('ads.export');
         Route::get('invoices/{invoice}', [InvoiceDocumentController::class, 'customer'])->name('invoices.show');
 
         Route::prefix('actions')->name('actions.')->group(function () {

@@ -21,6 +21,11 @@ class AdSettings
     public const DISCOUNT_30 = 'ads_discount_30_percent';
     public const HOLD_MINUTES = 'ads_hold_minutes';
     public const SECOND_APPROVAL = 'ads_second_approval';
+    public const EXCLUSIVITY_PERCENT = 'ads_exclusivity_percent';
+    public const LAUNCH_PERCENT = 'ads_launch_offer_percent';
+    public const LAUNCH_UNTIL = 'ads_launch_offer_until';
+    public const REPORT_THRESHOLD = 'ads_report_threshold';
+    public const WEEKLY_REPORTS = 'ads_weekly_reports';
 
     public const DEFAULTS = [
         self::ENABLED => '1',
@@ -34,6 +39,11 @@ class AdSettings
         self::DISCOUNT_30 => '20',
         self::HOLD_MINUTES => '15',
         self::SECOND_APPROVAL => '0',
+        self::EXCLUSIVITY_PERCENT => '50',
+        self::LAUNCH_PERCENT => '50',
+        self::LAUNCH_UNTIL => '',
+        self::REPORT_THRESHOLD => '3',
+        self::WEEKLY_REPORTS => '1',
     ];
 
     public const LABELS = [
@@ -48,6 +58,11 @@ class AdSettings
         self::DISCOUNT_30 => 'Discount for 30+ days (%)',
         self::HOLD_MINUTES => 'Slot hold while paying (minutes)',
         self::SECOND_APPROVAL => 'Casino and flagged ads need a second admin (1 = yes, 0 = no)',
+        self::EXCLUSIVITY_PERCENT => 'Category exclusivity add-on (% extra)',
+        self::LAUNCH_PERCENT => "Launch offer — % off each advertiser's first ad",
+        self::LAUNCH_UNTIL => 'Launch offer ends on (YYYY-MM-DD; empty = no launch offer)',
+        self::REPORT_THRESHOLD => 'Pause an ad automatically after this many user reports',
+        self::WEEKLY_REPORTS => 'Email advertisers a weekly report (1 = yes, 0 = no)',
     ];
 
     public static function load(): array
@@ -65,6 +80,18 @@ class AdSettings
     public static function get(string $key): string
     {
         return self::load()[$key];
+    }
+
+    /** Launch offer % if it is running today, else 0. */
+    public static function launchPercent(?array $settings = null): float
+    {
+        $settings = $settings ?? self::load();
+        $until = trim((string) $settings[self::LAUNCH_UNTIL]);
+        if ($until === '' || $until < now('Asia/Kolkata')->toDateString()) {
+            return 0.0;
+        }
+
+        return max(0.0, min(100.0, (float) $settings[self::LAUNCH_PERCENT]));
     }
 
     public static function enabled(): bool

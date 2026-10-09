@@ -87,6 +87,10 @@
             @php($adReviewCount = \App\Models\AdCampaign::where('status', \App\Models\AdCampaign::IN_REVIEW)->count())
             <li class="pc-item"><a class="pc-link" href="{{ route('admin.advertisements.selfServe.index') }}">Ad Review Queue
                     @if ($adReviewCount)<span class="badge bg-danger ms-1">{{ $adReviewCount }}</span>@endif</a></li>
+            @php($adReportCount = \App\Models\AdReport::where('status', 'open')->distinct('advertisement_id')->count('advertisement_id'))
+            <li class="pc-item"><a class="pc-link" href="{{ route('admin.advertisements.selfServe.dashboard') }}">Ad Dashboard</a></li>
+            <li class="pc-item"><a class="pc-link" href="{{ route('admin.advertisements.selfServe.reports') }}">Ad Reports
+                    @if ($adReportCount)<span class="badge bg-warning ms-1">{{ $adReportCount }}</span>@endif</a></li>
             <li class="pc-item"><a class="pc-link" href="{{ route('admin.advertisements.selfServe.placements') }}">Placements &amp; Pricing</a></li>
             <li class="pc-item"><a class="pc-link" href="{{ route('admin.advertisements.selfServe.advertisers') }}">Advertisers</a></li>
             <li class="pc-item"><a class="pc-link" href="{{ route('admin.advertisements.index') }}">Submit Ads</a></li>

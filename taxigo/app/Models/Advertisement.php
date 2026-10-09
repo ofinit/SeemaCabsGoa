@@ -34,7 +34,10 @@ class Advertisement extends BaseModel
         'status_changed_by',
         'status_changed_at',
         'status_note',
+        'targeting',
     ];
+
+    protected $casts = ['targeting' => 'array'];
 
     public const APPROVED = 'approved';
     public const PAUSED = 'paused';

@@ -29,7 +29,14 @@ class AdServer
     public const SCREEN_HOME_INLINE = 9;
     public const SCREEN_FINDING_LARGE = 10;
     public const SCREEN_FINDING_FULL = 11;
-    public const PWA_ONLY_SCREENS = [self::SCREEN_HOME_INLINE, self::SCREEN_FINDING_LARGE, self::SCREEN_FINDING_FULL];
+    // Phase 2.
+    public const SCREEN_AIRPORT_ARRIVALS = 12;
+    public const SCREEN_SIGHTSEEING_STOP = 13;
+    public const SCREEN_APP_OPEN = 14;
+    public const SCREEN_WEBSITE = 15;
+    public const SCREEN_EMAIL = 16;
+    public const PWA_ONLY_SCREENS = [self::SCREEN_HOME_INLINE, self::SCREEN_FINDING_LARGE, self::SCREEN_FINDING_FULL,
+        self::SCREEN_AIRPORT_ARRIVALS, self::SCREEN_SIGHTSEEING_STOP, self::SCREEN_APP_OPEN, self::SCREEN_WEBSITE, self::SCREEN_EMAIL];
 
     /** Approved, paid ads whose date + time window contains now (IST). */
     public static function live(): Builder
@@ -51,18 +58,31 @@ class AdServer
         return $query->whereRaw('screens REGEXP ?', ['(^|[^0-9])' . $screen . '([^0-9]|$)']);
     }
 
-    /** Live ads for a screen, newest first, or approved house ads if none. */
-    public static function forScreen(int $screen, int $limit = 5): Collection
+    /**
+     * Live ads for a screen that match the targeting for this view (day,
+     * hour, and — where known — the booking's area / trip type), newest
+     * first; approved house ads if none.
+     */
+    public static function forScreen(int $screen, int $limit = 5, array $context = []): Collection
     {
-        $ads = self::onScreen(self::live(), $screen)->orderByDesc('id')->limit($limit)->get();
+        $ads = self::targeted(self::onScreen(self::live(), $screen)->orderByDesc('id')->limit(100)->get(), $context)->take($limit)->values();
         if ($ads->isNotEmpty()) {
             return $ads;
+        }
+        if (in_array($screen, [self::SCREEN_SIGHTSEEING_STOP, self::SCREEN_WEBSITE, self::SCREEN_APP_OPEN, self::SCREEN_EMAIL], true)) {
+            return collect();
         }
 
         return self::onScreen(
             Advertisement::where('default', 1)->where('approval_status', Advertisement::APPROVED),
             $screen
         )->orderByDesc('id')->limit($limit)->get();
+    }
+
+    /** Keep only ads whose targeting matches the context (and today's day / hour). */
+    public static function targeted(Collection $ads, array $context = []): Collection
+    {
+        return $ads->filter(fn (Advertisement $ad) => AdTargeting::matches($ad->targeting, $context))->values();
     }
 
     /** What the PWA / apps need to render one ad. */

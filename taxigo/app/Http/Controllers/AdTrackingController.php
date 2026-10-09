@@ -4,7 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Advertisement;
 use App\Models\AdvertisementImpression;
+use App\Models\AdReport;
 use App\Models\AdvertisementUserClick;
+use App\Services\Ads\AdCampaignService;
+use App\Services\Ads\AdTargeting;
 use App\Services\Ads\AdServer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -15,7 +18,7 @@ use Illuminate\Support\Facades\DB;
  */
 class AdTrackingController extends Controller
 {
-    private const PLATFORMS = ['pwa', 'android', 'ios', 'website', 'qr', 'app'];
+    private const PLATFORMS = ['pwa', 'android', 'ios', 'website', 'email', 'qr', 'app'];
 
     /** GET /ads/c/{advertisement} (signed): count the click, then forward with UTM tags. */
     public function click(Request $request, Advertisement $advertisement)
@@ -36,6 +39,40 @@ class AdTrackingController extends Controller
         ]);
 
         return redirect()->away($target, 302, ['Cache-Control' => 'no-store', 'X-Robots-Tag' => 'noindex, nofollow']);
+    }
+
+    /** GET /ads/web?page=… — one live website ad (P9) for a marketing page's group. */
+    public function web(Request $request)
+    {
+        $group = AdTargeting::pageGroupOf((string) $request->query('page', 'index'));
+        $ad = $group ? AdServer::forScreen(AdServer::SCREEN_WEBSITE, 10, ['page_group' => $group])->shuffle()->first() : null;
+
+        return response()->json(['ad' => $ad ? AdServer::payload($ad, AdServer::SCREEN_WEBSITE, 'website') : null])
+            ->header('Cache-Control', 'no-store')->header('X-Robots-Tag', 'noindex');
+    }
+
+    /**
+     * POST /app/actions/ads/report (PWA) and /ads/report (website): a viewer
+     * reports an ad. One report per ad per person; enough of them pause it.
+     */
+    public function report(Request $request, AdCampaignService $ads)
+    {
+        $data = $request->validate([
+            'id' => 'required|integer|min:1',
+            'reason' => 'required|in:' . implode(',', array_keys(AdReport::REASONS)),
+            'note' => 'nullable|string|max:500',
+            'platform' => 'nullable|string|max:10',
+        ]);
+        $ad = Advertisement::find($data['id']);
+        if (!$ad) {
+            return response()->json(['status' => false, 'message' => 'Ad not found.'], 404);
+        }
+        $userId = auth('customer')->id();
+        $reporter = $userId ? 'u:' . $userId : 'ip:' . substr(hash('sha256', $request->ip() . '|' . config('app.key')), 0, 40);
+        $platform = in_array($data['platform'] ?? 'pwa', self::PLATFORMS, true) ? ($data['platform'] ?? 'pwa') : 'pwa';
+        $ads->report($ad, $userId, $reporter, $data['reason'], $data['note'] ?? null, $platform);
+
+        return response()->json(['status' => true, 'message' => 'Thanks — our team will review this ad.']);
     }
 
     /**

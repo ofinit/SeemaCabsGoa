@@ -13,7 +13,7 @@
             <a :href="full.ad.click_url || full.ad.banner_url || '#'" target="_blank" rel="noopener sponsored"
                :data-ad-id="full.ad.id" data-ad-screen="11" class="relative flex-1 min-h-0 flex items-center justify-center">
                 <img :src="full.ad.banner_image" class="max-h-full max-w-full object-contain" alt="Advertisement">
-                <span class="absolute top-3 left-3 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">Sponsored</span>
+                <span class="ad-report absolute top-3 left-3 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white cursor-pointer" role="button">Sponsored ⓘ</span>
             </a>
             <button type="button" class="absolute top-3 right-3 rounded-full bg-white/90 text-ink text-sm font-bold px-3 py-1.5 disabled:opacity-60"
                     :disabled="full.wait > 0" @click="full.open = false" x-text="full.wait > 0 ? 'Close in ' + full.wait : 'Close ✕'"></button>
@@ -29,7 +29,7 @@
                    :data-ad-id="slot.ad && slot.ad.id" :data-ad-screen="slot.ad && slot.ad.screen || slot.screen"
                    class="card p-0 overflow-hidden block relative">
                     <img :src="slot.ad && slot.ad.banner_image" class="w-full h-auto" alt="Advertisement">
-                    <span class="absolute top-1.5 right-1.5 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">Sponsored</span>
+                    <span class="ad-report absolute top-1.5 right-1.5 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white cursor-pointer" role="button" title="Why am I seeing this? / Report">Sponsored ⓘ</span>
                 </a>
             </div>
         </template>

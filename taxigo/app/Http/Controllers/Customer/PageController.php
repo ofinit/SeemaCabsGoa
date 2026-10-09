@@ -31,7 +31,13 @@ class PageController extends Controller
             ? route('customer.home')
             : route('customer.login');
 
-        return view('customer.splash', ['next' => $next]);
+        // P16 app-open sponsor: "Presented by" logo + one line (exclusive).
+        $sponsor = AdServer::forScreen(AdServer::SCREEN_APP_OPEN, 1)->first();
+        $sponsorAd = $sponsor ? AdServer::payload($sponsor, AdServer::SCREEN_APP_OPEN, 'pwa') + [
+            'headline' => optional(\App\Models\AdCampaign::find($sponsor->ad_campaign_id))->headline,
+        ] : null;
+
+        return view('customer.splash', ['next' => $next, 'sponsor' => $sponsorAd]);
     }
 
     public function home(Request $request)
@@ -169,7 +175,7 @@ class PageController extends Controller
     {
         // Finding-a-taxi: top (3) or the large card (10) that replaces it, bottom (8),
         // and an optional full-screen takeover (11). Rotation picks one of each at random.
-        $pick = fn (int $screen) => AdServer::onScreen(AdServer::live(), $screen)->inRandomOrder()->first();
+        $pick = fn (int $screen) => AdServer::targeted(AdServer::onScreen(AdServer::live(), $screen)->get())->shuffle()->first();
         $large = $pick(AdServer::SCREEN_FINDING_LARGE);
         $top = $large ? null : AdServer::forScreen(AdServer::SCREEN_FINDING_TOP, 5)->shuffle()->first();
         $bottom = AdServer::forScreen(AdServer::SCREEN_FINDING_BOTTOM, 5)->shuffle()->first();
@@ -267,11 +273,22 @@ class PageController extends Controller
             ? \App\Models\Invoice::where('booking_id', $details->id)->where('status', \App\Models\Invoice::ISSUED)->orderBy('id')->get()
             : collect();
 
+        // Ad targeting context: trip type and North / South Goa from the booking.
+        $adContext = $details ? \App\Services\Ads\AdTargeting::contextForBooking([
+            'trip_type' => $details->trip_type,
+            'sight_seeing_package_id' => $details->sight_seeing_package_id,
+            'pickup_from' => optional($details->getPickupFrom)->name,
+            'drop_to' => optional($details->getDropTo)->name,
+            'pickup_address' => $details->pickup_address,
+            'drop_of_address' => $details->drop_of_address,
+        ]) : [];
+
         return view('customer.trip.show', [
             'bookingId' => $booking,
             'booking' => $details,
             'error' => $error,
             'invoices' => $invoices,
+            'adContext' => $adContext,
         ]);
     }
 

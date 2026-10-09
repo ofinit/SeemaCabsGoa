@@ -3,13 +3,17 @@
 namespace App\Services\Ads;
 
 use App\Enums\Type;
+use App\Models\AdAdvertiser;
 use App\Models\AdCampaign;
 use App\Models\AdCampaignPlacement;
 use App\Models\AdCategory;
+use App\Models\AdCoupon;
 use App\Models\AdCreative;
 use App\Models\AdPlacement;
 use App\Models\AdReview;
 use App\Models\Advertisement;
+use App\Models\AdReport;
+use App\Models\SightSeeingPackages;
 use App\Models\UserFcmToken;
 use App\Services\Invoicing\InvoiceService;
 use App\Services\NotificationService;
@@ -41,11 +45,13 @@ class AdCampaignService
     // ---------------------------------------------------------------- drafts
 
     /**
-     * Create or update a draft: placements, dates and link. Re-prices it.
+     * Create or update a draft: placements, dates, link, targeting and
+     * options (headline for P16, exclusivity, coupon). Re-prices it.
      *
      * @param  int[]  $placementIds
+     * @param  array{targeting?: array, headline?: ?string, exclusive_category?: bool, coupon_code?: ?string}  $options
      */
-    public function saveDraft(?AdCampaign $campaign, \App\Models\AdAdvertiser $advertiser, array $placementIds, string $startDate, int $days, string $landingType, string $landingValue): AdCampaign
+    public function saveDraft(?AdCampaign $campaign, AdAdvertiser $advertiser, array $placementIds, string $startDate, int $days, string $landingType, string $landingValue, array $options = []): AdCampaign
     {
         if ($campaign && !$campaign->isEditable()) {
             throw new RuntimeException('This ad can no longer be edited.');
@@ -64,26 +70,43 @@ class AdCampaignService
         if ($placements->isEmpty()) {
             throw new RuntimeException('Choose at least one placement.');
         }
-        // Paid campaigns keep their placements and dates while changes are requested.
+        // Paid campaigns keep their placements, dates and targeting while changes are requested.
         $locked = $campaign && $campaign->isPaid();
+        $targeting = AdTargeting::normalize((array) ($options['targeting'] ?? []));
+        $headline = trim((string) ($options['headline'] ?? '')) ?: null;
+        if ($headline !== null && mb_strlen($headline) > 40) {
+            throw new RuntimeException('Keep the one-line message to 40 characters.');
+        }
+        $couponCode = strtoupper(trim((string) ($options['coupon_code'] ?? ''))) ?: null;
+        if ($couponCode && !$locked) {
+            $coupon = AdCoupon::findCode($couponCode);
+            if (!$coupon) {
+                throw new RuntimeException('That coupon code was not found.');
+            }
+        }
 
-        return DB::transaction(function () use ($campaign, $advertiser, $placements, $start, $days, $landingType, $landingValue, $locked) {
+        return DB::transaction(function () use ($campaign, $advertiser, $placements, $start, $days, $landingType, $landingValue, $locked, $targeting, $headline, $couponCode, $options) {
             $campaign = $campaign ?? new AdCampaign(['status' => AdCampaign::DRAFT]);
             $campaign->fill([
                 'advertiser_id' => $advertiser->id,
                 'user_id' => $advertiser->user_id,
                 'landing_type' => $landingType,
                 'landing_url' => trim($landingValue) === '' ? null : self::landingUrl($landingType, $landingValue),
+                'headline' => $headline,
             ]);
             if (!$locked) {
                 $campaign->fill([
                     'start_date' => $start->toDateString(),
                     'end_date' => $start->copy()->addDays($days - 1)->toDateString(),
+                    'days' => $days,
                     'category_name' => optional($advertiser->category)->name,
+                    'targeting' => $targeting,
+                    'exclusive_category' => !empty($options['exclusive_category']),
+                    'coupon_code' => $couponCode,
                 ]);
-                $campaign->fill(AdPricing::campaignColumns(AdPricing::quote($placements, optional($advertiser->category)->tier ?? AdCategory::STANDARD, $days, $advertiser->gstin)));
+                $campaign->fill(AdPricing::campaignColumns($this->quoteFor($campaign, $advertiser, $placements)));
             }
-            if ($campaign->renewed_from_id && $campaign->isDirty('landing_url')) {
+            if ($campaign->renewed_from_id && $campaign->isDirty(['landing_url', 'headline'])) {
                 $campaign->auto_approve = false;
             }
             $campaign->save();
@@ -98,14 +121,49 @@ class AdCampaignService
         });
     }
 
-    private function syncItems(AdCampaign $campaign, $placements): void
+    /** Price a campaign with its own options (peak days, units, exclusivity, launch offer / coupon). */
+    public function quoteFor(AdCampaign $campaign, AdAdvertiser $advertiser, $placements): array
     {
-        $tier = $campaign->tier;
+        return AdPricing::quote(
+            $placements,
+            optional($advertiser->category)->tier ?? AdCategory::STANDARD,
+            (int) $campaign->days,
+            $advertiser->gstin,
+            null,
+            [
+                'start_date' => $campaign->start_date instanceof Carbon ? $campaign->start_date->toDateString() : (string) $campaign->start_date,
+                'units' => self::unitsFor($placements, $campaign->targeting),
+                'exclusive_category' => (bool) $campaign->exclusive_category,
+                'coupon' => AdCoupon::findCode($campaign->coupon_code),
+                'first_booking' => !AdCampaign::where('advertiser_id', $advertiser->id)->whereNotNull('paid_at')
+                    ->when($campaign->id, fn ($q) => $q->where('id', '!=', $campaign->id))->exists(),
+            ]
+        );
+    }
+
+    /** Website ads (P9) are priced per page group. */
+    public static function unitsFor($placements, ?array $targeting): array
+    {
+        $units = [];
+        foreach ($placements as $placement) {
+            $units[$placement->id] = (int) $placement->screen_id === AdServer::SCREEN_WEBSITE
+                ? max(1, count($targeting['page_groups'] ?? []))
+                : 1;
+        }
+
+        return $units;
+    }
+
+    private function syncItems(AdCampaign $campaign, $placements, ?array $quote = null): void
+    {
+        $quote = $quote ?? $this->quoteFor($campaign, $campaign->advertiser, $placements);
+        $byPlacement = collect($quote['items'])->keyBy('placement_id');
         $campaign->items()->whereNotIn('placement_id', $placements->pluck('id'))->delete();
         foreach ($placements as $placement) {
+            $item = $byPlacement[$placement->id];
             AdCampaignPlacement::updateOrCreate(
                 ['campaign_id' => $campaign->id, 'placement_id' => $placement->id],
-                ['price_per_day' => $placement->priceFor($tier), 'days' => $campaign->days, 'subtotal' => $placement->priceFor($tier) * $campaign->days]
+                ['price_per_day' => $item['price_per_day'], 'days' => $campaign->days, 'units' => $item['units'], 'subtotal' => $item['subtotal']]
             );
         }
         // Creatives for shapes no longer booked are dropped.
@@ -187,6 +245,17 @@ class AdCampaignService
         if (blank($campaign->landing_url)) {
             $problems[] = 'Add the link people open when they tap the ad.';
         }
+        $screens = $campaign->items->map(fn ($i) => (int) $i->placement->screen_id)->all();
+        if (in_array(AdServer::SCREEN_APP_OPEN, $screens, true) && blank($campaign->headline)) {
+            $problems[] = 'Add the one-line message for the app-open sponsor (P16).';
+        }
+        if (in_array(AdServer::SCREEN_SIGHTSEEING_STOP, $screens, true)
+            && !SightSeeingPackages::whereKey((int) ($campaign->targeting['package_id'] ?? 0))->exists()) {
+            $problems[] = 'Choose the sightseeing package for the sponsored stop (P14).';
+        }
+        if (in_array(AdServer::SCREEN_WEBSITE, $screens, true) && empty($campaign->targeting['page_groups'])) {
+            $problems[] = 'Choose at least one website page group (P9).';
+        }
         $category = $advertiser->category;
         if ($category && $category->licence_required && !$advertiser->hasLicenceValidUntil(optional($campaign->end_date)->toDateString())) {
             $problems[] = "Upload your {$category->licence_label}, valid until the end date of the ad.";
@@ -211,14 +280,27 @@ class AdCampaignService
         return DB::transaction(function () use ($campaign) {
             // Lock the placements so two advertisers can't take the last slot together.
             $placements = AdPlacement::whereIn('id', $campaign->items->pluck('placement_id'))->lockForUpdate()->get();
-            $conflicts = AdAvailability::conflicts($placements, $campaign->start_date->toDateString(), $campaign->end_date->toDateString(), $campaign->id);
+            [$from, $to] = [$campaign->start_date->toDateString(), $campaign->end_date->toDateString()];
+            $conflicts = AdAvailability::conflicts($placements, $from, $to, $campaign->id, (array) ($campaign->targeting['page_groups'] ?? []));
             if ($conflicts) {
                 $list = collect($conflicts)->map(fn ($date, $code) => $code . ' (from ' . Carbon::parse($date)->format('d M') . ')')->implode(', ');
                 throw new RuntimeException("Sold out: {$list}. Choose other dates or placements.");
             }
             $advertiser = $campaign->advertiser;
-            $campaign->fill(AdPricing::campaignColumns(AdPricing::quote($placements, optional($advertiser->category)->tier ?? AdCategory::STANDARD, (int) $campaign->days, $advertiser->gstin)));
-            $this->syncItems($campaign, $placements);
+            $category = $advertiser->category_id
+                ? AdAvailability::categoryConflicts($placements, $from, $to, (int) $advertiser->category_id, (bool) $campaign->exclusive_category, $campaign->id)
+                : [];
+            if ($category) {
+                $list = collect($category)->map(fn ($why, $code) => "{$code}: {$why}")->implode('; ');
+                throw new RuntimeException("Not available — {$list}. Choose other dates or placements" . ($campaign->exclusive_category ? ', or book without exclusivity.' : '.'));
+            }
+            $coupon = AdCoupon::findCode($campaign->coupon_code);
+            $quote = $this->quoteFor($campaign, $advertiser, $placements);
+            if ($coupon && ($problem = $coupon->problemFor($advertiser, (int) $quote['list_amount'], $campaign->id))) {
+                throw new RuntimeException($problem . ' Remove the coupon to continue.');
+            }
+            $campaign->fill(AdPricing::campaignColumns($quote));
+            $this->syncItems($campaign, $placements, $quote);
             $flags = $this->autoFlags($campaign);
             $campaign->forceFill([
                 'status' => AdCampaign::PENDING_PAYMENT,
@@ -249,6 +331,9 @@ class AdCampaignService
                 'submitted_at' => now(),
             ])->save();
             $justPaid = true;
+            if ($campaign->coupon_id) {
+                AdCoupon::whereKey($campaign->coupon_id)->increment('used');
+            }
 
             return $campaign;
         });
@@ -444,15 +529,21 @@ class AdCampaignService
         return $campaign;
     }
 
-    public function pause(AdCampaign $campaign, int $adminId, bool $pause, ?string $note = null): AdCampaign
+    public function pause(AdCampaign $campaign, ?int $adminId, bool $pause, ?string $note = null, ?string $reason = null): AdCampaign
     {
         $from = $pause ? AdCampaign::APPROVED : AdCampaign::PAUSED;
         if ($campaign->status !== $from) {
             throw new RuntimeException($pause ? 'Only approved ads can be paused.' : 'Only paused ads can be resumed.');
         }
-        $campaign->forceFill(['status' => $pause ? AdCampaign::PAUSED : AdCampaign::APPROVED])->save();
+        $campaign->forceFill([
+            'status' => $pause ? AdCampaign::PAUSED : AdCampaign::APPROVED,
+            'paused_reason' => $pause ? ($reason ?? 'admin') : null,
+        ])->save();
         $this->setServing($campaign, $pause ? Advertisement::PAUSED : Advertisement::APPROVED, $adminId, $note);
-        $this->log($campaign, $adminId, 'first', $pause ? 'pause' : 'resume', [], [], $note);
+        $this->log($campaign, $adminId ?? 0, $adminId ? 'first' : 'system', $pause ? 'pause' : 'resume', [], [], $note);
+        if ($pause && $reason) {
+            $this->notify($campaign, 'Your ad is paused', "Ad {$campaign->reference} is paused: {$note} Contact us or fix it in the app to resume.");
+        }
 
         return $campaign;
     }
@@ -499,9 +590,17 @@ class AdCampaignService
             if (!$creative) {
                 continue;
             }
+            $targeting = (array) ($campaign->targeting ?? []);
+            if ((int) $item->placement->screen_id !== AdServer::SCREEN_SIGHTSEEING_STOP) {
+                unset($targeting['package_id']);
+            }
+            if ((int) $item->placement->screen_id !== AdServer::SCREEN_WEBSITE) {
+                unset($targeting['page_groups']);
+            }
             $data = [
                 'customer_id' => $campaign->user_id,
                 'screens' => json_encode([(string) $item->placement->screen_id]),
+                'targeting' => $targeting ?: null,
                 'banner_image' => $creative->file,
                 'banner_url' => $campaign->landing_url,
                 'location' => Type::AllValue,
@@ -563,7 +662,11 @@ class AdCampaignService
             default => $old->landing_url,
         };
 
-        $new = $this->saveDraft(null, $old->advertiser, $old->items->pluck('placement_id')->all(), $start->toDateString(), $days, $type, $value);
+        $new = $this->saveDraft(null, $old->advertiser, $old->items->pluck('placement_id')->all(), $start->toDateString(), $days, $type, $value, [
+            'targeting' => (array) $old->targeting,
+            'headline' => $old->headline,
+            'exclusive_category' => (bool) $old->exclusive_category,
+        ]);
         foreach ($old->creatives as $creative) {
             AdCreative::updateOrCreate(
                 ['campaign_id' => $new->id, 'shape' => $creative->shape],
@@ -585,7 +688,11 @@ class AdCampaignService
                 $campaign->forceFill(['status' => AdCampaign::EXPIRED, 'expired_at' => now()])->save();
                 $expired++;
                 $this->notify($campaign, 'Your ad has ended', "Ad {$campaign->reference} finished on {$campaign->end_date->format('d M Y')}. See the results and renew in the app.");
+                app(AdReporting::class)->sendFinalReport($campaign);
             });
+
+        $licences = $this->checkLicences();
+        $links = $this->checkLinks();
 
         $reminded = 0;
         AdCampaign::where('status', AdCampaign::APPROVED)->whereNull('reminder_sent_at')
@@ -611,7 +718,96 @@ class AdCampaignService
         $stale = AdCampaign::whereIn('status', [AdCampaign::DRAFT, AdCampaign::PENDING_PAYMENT])->whereNull('paid_at')
             ->where('updated_at', '<', now()->subDays(14))->update(['status' => AdCampaign::CANCELLED, 'hold_expires_at' => null]);
 
-        return compact('expired', 'reminded', 'recovered', 'stale');
+        return compact('expired', 'reminded', 'recovered', 'stale', 'licences', 'links');
+    }
+
+    /**
+     * Licence expiry (plan §11): pause live ads of categories that need a
+     * licence once no valid licence is on file; warn 7 days ahead.
+     */
+    private function checkLicences(): int
+    {
+        $today = now('Asia/Kolkata')->toDateString();
+        $paused = 0;
+        AdCampaign::with('advertiser.category', 'advertiser.licences')->where('status', AdCampaign::APPROVED)->get()
+            ->filter(fn ($c) => optional($c->advertiser->category)->licence_required)
+            ->each(function (AdCampaign $campaign) use ($today, &$paused) {
+                $advertiser = $campaign->advertiser;
+                if (!$advertiser->hasLicenceValidUntil($today)) {
+                    $this->pause($campaign, null, true, 'your ' . $advertiser->category->licence_label . ' has expired. Upload the renewed licence.', 'licence');
+                    $paused++;
+
+                    return;
+                }
+                $lastsTo = $advertiser->licences->where('status', '!=', \App\Models\AdLicence::REJECTED)->max(fn ($l) => optional($l->valid_until)->toDateString());
+                if ($lastsTo && $lastsTo < $campaign->end_date->toDateString() && $lastsTo <= now('Asia/Kolkata')->addDays(7)->toDateString() && !$campaign->licence_warned_at) {
+                    $campaign->forceFill(['licence_warned_at' => now()])->save();
+                    $this->notify($campaign, 'Licence expiring soon', "Your {$advertiser->category->licence_label} expires on " . Carbon::parse($lastsTo)->format('d M Y') . ". Upload the renewed licence so ad {$campaign->reference} isn't paused.");
+                }
+            });
+
+        return $paused;
+    }
+
+    /** Daily link check (plan §11): two failures in a row pause the ad. */
+    private function checkLinks(): int
+    {
+        $paused = 0;
+        AdCampaign::where('status', AdCampaign::APPROVED)->where('landing_type', 'website')
+            ->where(fn ($q) => $q->whereNull('link_checked_at')->orWhere('link_checked_at', '<', now()->subHours(23)))
+            ->limit(50)->get()
+            ->each(function (AdCampaign $campaign) use (&$paused) {
+                $ok = self::linkWorks($campaign->landing_url);
+                $failures = $ok ? 0 : (int) $campaign->link_failures + 1;
+                $campaign->forceFill(['link_checked_at' => now(), 'link_failures' => $failures])->save();
+                if ($failures >= 2) {
+                    $this->pause($campaign, null, true, "the link {$campaign->landing_url} isn't opening. Fix your website or change the link.", 'link');
+                    $paused++;
+                }
+            });
+
+        return $paused;
+    }
+
+    public static function linkWorks(?string $url): bool
+    {
+        if (!$url) {
+            return false;
+        }
+        try {
+            $response = Http::timeout(10)->withOptions(['allow_redirects' => ['max' => 5]])
+                ->withHeaders(['User-Agent' => 'Mozilla/5.0 (SeemaCabsGoa link check)'])->get($url);
+
+            return $response->status() < 400 || in_array($response->status(), [401, 403, 405, 429], true);
+        } catch (\Throwable $e) {
+            return false;
+        }
+    }
+
+    /**
+     * A viewer reports an ad. Reaching the threshold of distinct reporters
+     * pauses it until an admin reviews the reports.
+     */
+    public function report(Advertisement $ad, ?int $userId, string $reporterKey, string $reason, ?string $note, string $platform): AdReport
+    {
+        $report = AdReport::firstOrCreate(
+            ['advertisement_id' => $ad->id, 'reporter' => $reporterKey],
+            ['campaign_id' => $ad->ad_campaign_id, 'user_id' => $userId, 'reason' => $reason, 'note' => $note ? mb_substr($note, 0, 500) : null, 'platform' => $platform]
+        );
+        $threshold = (int) AdSettings::get(AdSettings::REPORT_THRESHOLD);
+        $open = AdReport::where('status', AdReport::OPEN)
+            ->where(fn ($q) => $ad->ad_campaign_id ? $q->where('campaign_id', $ad->ad_campaign_id) : $q->where('advertisement_id', $ad->id))
+            ->distinct('reporter')->count('reporter');
+        if ($open >= $threshold) {
+            $campaign = $ad->ad_campaign_id ? AdCampaign::find($ad->ad_campaign_id) : null;
+            if ($campaign && $campaign->status === AdCampaign::APPROVED) {
+                $this->pause($campaign, null, true, 'several people reported it. Our team is reviewing it.', 'reports');
+            } elseif (!$campaign && $ad->approval_status === Advertisement::APPROVED) {
+                $ad->forceFill(['approval_status' => Advertisement::PAUSED, 'status_changed_at' => now(), 'status_note' => 'Auto-paused: user reports'])->save();
+            }
+        }
+
+        return $report;
     }
 
     // ----------------------------------------------------------------- misc

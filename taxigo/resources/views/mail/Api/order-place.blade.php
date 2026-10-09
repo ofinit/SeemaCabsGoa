@@ -402,6 +402,7 @@
             <p>OfinIT Solutions Private Limited</p>
         </div>
     </div>
+    @include('mail.partials.ad-footer')
 </body>
 
 </html>

@@ -18,6 +18,7 @@ class Kernel extends ConsoleKernel
         // Requires `php artisan schedule:run` every minute (Coolify scheduled task).
         $schedule->command('invoices:platform-fee')->monthlyOn(1, '06:00')->timezone('Asia/Kolkata');
         $schedule->command('ads:maintain')->hourly()->withoutOverlapping();
+        $schedule->command('ads:weekly-reports')->weeklyOn(1, '10:00')->timezone('Asia/Kolkata');
     }
 
     /**

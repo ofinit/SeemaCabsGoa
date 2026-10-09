@@ -395,7 +395,7 @@ class InvoiceService
                 $invoice->lines()->create([
                     'ad_campaign_id' => $campaign->id,
                     'description' => 'Advertising — ' . $item->placement->code . ' ' . $item->placement->name . ', ' . $item->days . ' days from ' . $campaign->start_date->format('d-m-Y')
-                        . ($campaign->discount_percent > 0 ? ' (incl. ' . rtrim(rtrim(number_format((float) $campaign->discount_percent, 2), '0'), '.') . '% discount)' : ''),
+                        . ((int) $campaign->net_amount !== (int) $campaign->list_amount ? ' (price after offers / add-ons)' : ''),
                     'sac_code' => $sac,
                     'rate_percent' => $rate,
                     'base_amount' => $item->subtotal / 100,

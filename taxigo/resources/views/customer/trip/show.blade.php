@@ -67,14 +67,18 @@
                 </template>
 
                 {{-- Ads (P5 booking confirmed / P6 driver details / P7 ride complete); never above the driver card or SOS. --}}
+                {{-- P15 airport arrival offers: airport pickups only. --}}
+                <template x-if="booking.trip_type == 1 && booking.status != 3 && booking.status != 4 && booking.status != 5">
+                    <div>@include('customer.components.ad-slot', ['screen' => \App\Services\Ads\AdServer::SCREEN_AIRPORT_ARRIVALS, 'context' => $adContext ?? []])</div>
+                </template>
                 <template x-if="!booking.assignDriver && booking.status != 3 && booking.status != 4 && booking.status != 5">
-                    <div>@include('customer.components.ad-slot', ['screen' => \App\Services\Ads\AdServer::SCREEN_BOOKING_CONFIRMED])</div>
+                    <div>@include('customer.components.ad-slot', ['screen' => \App\Services\Ads\AdServer::SCREEN_BOOKING_CONFIRMED, 'context' => $adContext ?? []])</div>
                 </template>
                 <template x-if="booking.assignDriver && booking.status != 3 && booking.status != 4 && booking.status != 5">
-                    <div>@include('customer.components.ad-slot', ['screen' => \App\Services\Ads\AdServer::SCREEN_DRIVER_DETAILS])</div>
+                    <div>@include('customer.components.ad-slot', ['screen' => \App\Services\Ads\AdServer::SCREEN_DRIVER_DETAILS, 'context' => $adContext ?? []])</div>
                 </template>
                 <template x-if="booking.status == 4">
-                    <div>@include('customer.components.ad-slot', ['screen' => \App\Services\Ads\AdServer::SCREEN_RATING])</div>
+                    <div>@include('customer.components.ad-slot', ['screen' => \App\Services\Ads\AdServer::SCREEN_RATING, 'context' => $adContext ?? []])</div>
                 </template>
 
                 <!-- QUICK ACTIONS (CALL DRIVER / SOS) -->

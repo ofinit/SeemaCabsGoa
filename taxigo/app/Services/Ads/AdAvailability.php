@@ -16,8 +16,13 @@ use Illuminate\Support\Facades\DB;
  */
 class AdAvailability
 {
-    /** @return array<int, array<string, int>> placement_id => [Y-m-d => ads] */
-    public static function usage(array $placementIds, string $from, string $to, ?int $excludeCampaignId = null): array
+    /**
+     * Website ads (P9) are counted per page group: pass the groups being
+     * booked and only ads sharing one of them count.
+     *
+     * @return array<int, array<string, int>> placement_id => [Y-m-d => ads]
+     */
+    public static function usage(array $placementIds, string $from, string $to, ?int $excludeCampaignId = null, array $pageGroups = []): array
     {
         $usage = array_fill_keys($placementIds, []);
         if (!$placementIds) {
@@ -34,8 +39,15 @@ class AdAvailability
                 $q->whereIn('c.status', AdCampaign::BOOKED)
                     ->orWhere(fn ($q) => $q->where('c.status', AdCampaign::PENDING_PAYMENT)->where('c.hold_expires_at', '>', now()));
             })
-            ->get(['cp.placement_id', 'c.start_date', 'c.end_date']);
+            ->get(['cp.placement_id', 'c.start_date', 'c.end_date', 'c.targeting']);
+        $websiteIds = AdPlacement::whereIn('id', $placementIds)->where('screen_id', AdServer::SCREEN_WEBSITE)->pluck('id')->all();
         foreach ($campaignRows as $row) {
+            if ($pageGroups && in_array($row->placement_id, $websiteIds)) {
+                $theirs = (array) (json_decode((string) $row->targeting, true)['page_groups'] ?? []);
+                if (!array_intersect($theirs, $pageGroups)) {
+                    continue;
+                }
+            }
             self::add($usage[$row->placement_id], $row->start_date, $row->end_date, $from, $to);
         }
 
@@ -59,10 +71,10 @@ class AdAvailability
     }
 
     /** Sold-out dates per placement between two dates. @return array<int, string[]> */
-    public static function soldOut(iterable $placements, string $from, string $to, ?int $excludeCampaignId = null): array
+    public static function soldOut(iterable $placements, string $from, string $to, ?int $excludeCampaignId = null, array $pageGroups = []): array
     {
         $placements = collect($placements);
-        $usage = self::usage($placements->pluck('id')->all(), $from, $to, $excludeCampaignId);
+        $usage = self::usage($placements->pluck('id')->all(), $from, $to, $excludeCampaignId, $pageGroups);
         $out = [];
         foreach ($placements as $placement) {
             $out[$placement->id] = array_keys(array_filter(
@@ -76,10 +88,10 @@ class AdAvailability
     }
 
     /** Placements that are sold out on any day of the range: [code => first sold-out date]. */
-    public static function conflicts(iterable $placements, string $from, string $to, ?int $excludeCampaignId = null): array
+    public static function conflicts(iterable $placements, string $from, string $to, ?int $excludeCampaignId = null, array $pageGroups = []): array
     {
         $conflicts = [];
-        foreach (self::soldOut($placements, $from, $to, $excludeCampaignId) as $placementId => $dates) {
+        foreach (self::soldOut($placements, $from, $to, $excludeCampaignId, $pageGroups) as $placementId => $dates) {
             if ($dates) {
                 $placement = collect($placements)->firstWhere('id', $placementId);
                 $conflicts[$placement->code] = $dates[0];
@@ -87,6 +99,39 @@ class AdAvailability
         }
 
         return $conflicts;
+    }
+
+    /**
+     * Category exclusivity (plan §5.3): an exclusive booking can't share a
+     * placement-day with another ad of the same category, and nobody of that
+     * category can book next to an exclusive one. Returns [code => reason].
+     */
+    public static function categoryConflicts(iterable $placements, string $from, string $to, int $categoryId, bool $wantsExclusive, ?int $excludeCampaignId = null): array
+    {
+        $placements = collect($placements);
+        $rows = DB::table('ad_campaign_placements as cp')
+            ->join('ad_campaigns as c', 'c.id', '=', 'cp.campaign_id')
+            ->join('ad_advertisers as a', 'a.id', '=', 'c.advertiser_id')
+            ->whereIn('cp.placement_id', $placements->pluck('id'))
+            ->where('a.category_id', $categoryId)
+            ->where('c.start_date', '<=', $to)->where('c.end_date', '>=', $from)
+            ->when($excludeCampaignId, fn ($q) => $q->where('c.id', '!=', $excludeCampaignId))
+            ->where(function ($q) {
+                $q->whereIn('c.status', AdCampaign::BOOKED)
+                    ->orWhere(fn ($q) => $q->where('c.status', AdCampaign::PENDING_PAYMENT)->where('c.hold_expires_at', '>', now()));
+            })
+            ->when(!$wantsExclusive, fn ($q) => $q->where('c.exclusive_category', true))
+            ->get(['cp.placement_id', 'c.exclusive_category']);
+
+        $out = [];
+        foreach ($rows as $row) {
+            $code = $placements->firstWhere('id', $row->placement_id)->code;
+            $out[$code] = $row->exclusive_category
+                ? 'another advertiser in your category has these days exclusively'
+                : 'another advertiser in your category is already booked on these days';
+        }
+
+        return $out;
     }
 
     private static function add(array &$days, string $start, string $end, string $from, string $to): void
