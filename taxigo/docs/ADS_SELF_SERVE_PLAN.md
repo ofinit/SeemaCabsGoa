@@ -247,6 +247,48 @@ lists with renew, `screen_prices` per screen per day) and replaces the static
 - Every order **snapshots** prices, discounts, GST and the commission %, so
   later price changes never alter paid orders or invoices.
 
+### Suggested launch prices (per day, before 18% GST)
+
+The audience is small today, so prices must be low enough for a local shop or
+restaurant to try, and must be re-set from measured data. From the data (Oct
+2026): new customer sign-ups fell from 342 (Jan 2026) to single digits per
+month, paid bookings are ~1 per month, recorded ad clicks were 30–50 per month
+in late 2025, and 36 ads have earned ₹1,866 in total. The current admin
+prices are also out of line with visibility (the Account screen is the most
+expensive at ₹100/day; Home is the cheapest at ₹10/day).
+
+| Placement | Visibility | Launch price / day | 7 days (−10%) | 30 days (−20%) |
+|---|---|---|---|---|
+| P1 Home hero carousel | Highest: every app open | **₹99** | ₹624 | ₹2,376 |
+| P3 Finding-a-taxi (top) | Long dwell while booking | **₹79** | ₹498 | ₹1,896 |
+| P9 Website landing pages (airport / route pages) | SEO visitors (tourists) | **₹79** per page group | ₹498 | ₹1,896 |
+| P5 Booking confirmed | Every paying customer | **₹49** | ₹309 | ₹1,176 |
+| P7 Ride complete / rating | After each trip | **₹39** | ₹246 | ₹936 |
+| P2 Home inline, P4 Finding (bottom), P6 Driver details | Medium | **₹29** | ₹183 | ₹696 |
+| P8 Rides history & Account | Low | **₹19** | ₹120 | ₹456 |
+| **Bundle:** P1 + P3 + P5 | All booking touchpoints | **₹179** (vs ₹227) | ₹1,128 | ₹4,296 |
+
+- **Peak season** (e.g. 15 Dec – 5 Jan, Shigmo, long weekends): × 1.5.
+- Minimum order **₹199** (before GST), so very small orders don't cost more
+  to review than they earn.
+- Example: Home hero for 30 days = ₹2,376 + ₹427.68 GST = ₹2,803.68; Seema
+  Holidays keeps 10% = ₹237.60; OfinIT gets ₹2,138.40 + GST.
+- **Review after 30 days of measured viewable impressions** (Phase 0 adds
+  them). Target ≈ ₹100–150 per 1,000 viewable impressions (typical for
+  local mobile display); raise or lower each placement's price to match.
+  Website placements depend on marketing-site traffic, so check that in
+  Google Analytics / Search Console before selling them.
+
+### Targeting
+- **Kept:** area (North / South Goa, town of pickup or drop), platform (PWA /
+  Android / iOS / website), days of week and hours.
+- **Gender targeting: dropped** from self-serve, and the existing field is
+  ignored when serving. Reasons: never used (0 of 36 ads), it would split an
+  already small audience in half, the stored gender is unreliable (optional,
+  self-declared, and the PWA review form pre-selects "Male"), and targeting by
+  a personal attribute adds privacy (DPDP) and fairness risk for no benefit to
+  local advertisers, who target tourists by place and time.
+
 ### Expiry & renewal
 - An ad runs from its start date + time to its **end date + time**. An hourly
   scheduled job marks ended ads **Expired** and removes them from serving
@@ -328,10 +370,10 @@ check that the server's GD build has WebP support. Later, add object storage
   (own SAC) on the existing monthly OfinIT invoice, or its own monthly invoice:
   90% of net ad revenue + 18% GST. Marked as already collected via split
   (online sales) or payable (offline sales).
-- **TDS:** Seema paying OfinIT may require TDS deduction (194C/194J
-  depending on how the service is classified) **[CA]**. If TDS applies, the
-  split must transfer the share **net of TDS** and the TDS is shown on the
-  invoice settlement.
+- **TDS: decided — no TDS deduction** on payments to OfinIT; OfinIT shares
+  GST invoices for every amount. The split transfers OfinIT's full share.
+  (Note for the accountant: TDS is an income-tax rule separate from GST, so
+  revisit if annual payments to OfinIT cross the TDS thresholds.)
 
 **Data:** ad payment and invoice data now live in **Seema's** database, next
 to ride payments (same gateway account, same reconciliation). OfinIT sees its
@@ -410,13 +452,43 @@ ad**. The fallback then is either:
 |---|---|
 | Served | Ad returned by `/v1/serve` |
 | **Impression (viewable)** | ≥ 50% of the ad visible for ≥ 1 s (IntersectionObserver in the PWA and website, the platform equivalent in native apps) |
-| Click | Via `/c/{signed-token}` → 302 to landing URL with UTM tags (`utm_source=seemacabsgoa&utm_medium=app&utm_campaign={id}`) |
+| Click | Via `/ads/c/{signed-token}` → logged → 302 to the landing URL with UTM tags (see "Click tracking & UTM" below) |
 | Call / WhatsApp / Directions | CTA-specific click types |
 | Conversion (optional) | Advertiser adds a tiny pixel or uses a coupon code; postback API later |
 
 Events are batched with `navigator.sendBeacon` and deduplicated by
 `(event_id)`. They're signed with a short-lived token from `/v1/serve`, so
 nobody can fake impressions.
+
+### Click tracking & UTM (rev 2)
+
+**Today:** PWA ads are plain links straight to the advertiser's site. **No
+UTM tags are added, and PWA clicks are not counted at all** (only the mobile
+apps call `/api/advertisement-click`; that is where the 141 recorded clicks
+come from). Advertisers therefore can't see Seema traffic in their own
+analytics.
+
+**New flow:** every ad links to `www.seemacabsgoa.com/ads/c/{signed-token}`.
+The server logs the click (same counting for PWA, apps and website), then
+redirects (302) to the landing URL with UTM tags added:
+
+```
+utm_source=seemacabsgoa
+utm_medium=pwa | android | ios | website
+utm_campaign=<ad order id, e.g. AD-00042>
+utm_content=<placement, e.g. home_hero>
+```
+
+- **The advertiser's own UTMs win:** tags already in their URL are kept, and
+  only missing ones are added.
+- **Only to the stored landing URL** (no open redirect), HTTPS only.
+- **WhatsApp ads** (`wa.me`): UTMs don't apply, so the message is prefilled
+  with "Hi, I saw your ad on Seema Cabs Goa" for attribution. **Call ads**
+  (`tel:`) are counted as call taps.
+- The advertiser dashboard shows our click counts; their Google Analytics
+  shows the same visits under `utm_source=seemacabsgoa`.
+- **Phase 0 quick fix:** make the PWA call the existing click API and add UTM
+  tags, before the full redirect service.
 
 **Invalid-traffic filtering:** drop known bots and headless agents, cap
 repeated clicks from the same device (1 per ad per 30 min), rate-limit by IP,
@@ -518,11 +590,14 @@ path, bytes), `orders`, `payments`, `refunds`, `invoices`, `credit_notes`,
 3. ~~Which OfinIT gateway~~ — **decided (rev 2):** Seema Holidays' Razorpay /
    Cashfree. Has Seema informed both gateways that it will also sell
    advertising on `seemacabsgoa.com`?
+   **Decided:** yes, the gateways will be informed.
 3a. **[CA]** Confirm the structure in §0 (Seema sells the ad space; OfinIT
-   supplies an ad-platform service to Seema), the SAC codes, Seema's input
-   credit on OfinIT's 18% invoice, and whether Seema must deduct TDS.
-4. Should **gender targeting** stay? It exists today. Recommendation: drop it,
-   as it adds privacy risk and little value for local Goa advertisers.
+   supplies an ad-platform service to Seema), the SAC codes, and Seema's input
+   credit on OfinIT's 18% invoice. **TDS: decided — not deducted** (§6).
+3b. **Pricing — decided: per-day price.** Launch prices proposed in §4A
+   ("Suggested launch prices"); confirm or adjust.
+4. ~~Gender targeting~~ — **decided: dropped** from self-serve (see §4A,
+   "Targeting").
 5. **Who reviews ads**, and what review SLA is promised?
 6. Will the **Android/iOS apps** get an update in Phase 1, or only via the
    unchanged proxy API until Phase 3?
