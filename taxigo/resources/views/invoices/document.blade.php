@@ -6,7 +6,7 @@
     $r = $invoice->recipient ?? [];
     $meta = $invoice->meta ?? [];
     $money = fn ($v) => number_format((float) $v, 2);
-    $isPlatform = $invoice->type === Invoice::PLATFORM_FEE || ($meta['platform'] ?? false);
+    $isPlatform = in_array($invoice->type, [Invoice::PLATFORM_FEE, Invoice::AD_PLATFORM_FEE], true) || ($meta['platform'] ?? false);
     $showBase = $invoice->lines->whereNotNull('base_amount')->isNotEmpty();
 @endphp
 <!DOCTYPE html>
@@ -74,6 +74,10 @@
             @endif
             @if($invoice->booking)
                 <div><strong>Booking:</strong> {{ $invoice->booking->booking_id }}</div>
+            @endif
+            @if($invoice->adCampaign && $invoice->type !== Invoice::AD_PLATFORM_FEE)
+                <div><strong>Ad:</strong> {{ $invoice->adCampaign->reference }}</div>
+                @if(!empty($invoice->meta['period']))<div><strong>Runs:</strong> {{ $invoice->meta['period'] }}</div>@endif
             @endif
             @if($invoice->related)
                 <div><strong>Against:</strong> {{ $invoice->related->label() }} {{ $invoice->related->number }}</div>

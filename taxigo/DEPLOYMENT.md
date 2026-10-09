@@ -122,6 +122,7 @@ Under **Persistent Storage**:
 |---|---|---|
 | Volume | `/var/www/html/storage/app/public` | Uploaded images: driver documents, cab photos, banners. **Required**; without it, uploads are lost on every deploy. |
 | File | `/var/www/html/storage/app/firebase/firebase_credentials.json` | Paste the Firebase service-account JSON. Required for push notifications. |
+| Volume | `/var/www/html/storage/app/ads` | Self-serve ads: advertisers' licence documents and original ad images. **Private** (never served publicly). **Required** once self-serve ads are on. |
 
 ### Copy the existing uploads into the volume
 
@@ -191,8 +192,10 @@ kept between deploys.
 
 ## 10. Scheduled tasks
 
-The app's scheduler drafts last month's OfinIT platform-fee invoice on the 1st
-at 06:00 IST (an admin reviews and issues it). In Coolify go to the app's
+The app's scheduler drafts last month's OfinIT platform-fee and ad-platform
+invoices on the 1st at 06:00 IST (an admin reviews and issues them), and runs
+`ads:maintain` every hour (expires ended ads, sends renewal reminders, confirms
+ad payments the browser didn't). In Coolify go to the app's
 **Scheduled Tasks → + Add**:
 
 | Name | Command | Frequency |

@@ -43,7 +43,7 @@ class InvoiceController extends Controller
         $month = $this->month($request);
         $type = $request->input('type');
 
-        $query = Invoice::with('booking')->latest('id');
+        $query = Invoice::with('booking', 'adCampaign')->latest('id');
         if ($request->input('scope') !== 'all') {
             $query->where(function ($q) use ($month) {
                 $q->whereBetween('issue_date', [$month->toDateString(), $month->copy()->endOfMonth()->toDateString()])
@@ -65,7 +65,7 @@ class InvoiceController extends Controller
     public function show(Invoice $invoice)
     {
         $this->authorizeAdmin();
-        $invoice->load('lines', 'booking', 'related');
+        $invoice->load('lines', 'booking', 'related', 'adCampaign');
 
         return view('invoices.document', compact('invoice'));
     }
@@ -75,20 +75,31 @@ class InvoiceController extends Controller
         $this->authorizeAdmin();
         $month = $this->month($request);
 
+        $adMessage = '';
+        try {
+            $ads = $this->invoices->adPlatformDraft($month);
+            if ($ads['invoice'] || $ads['credit_note']) {
+                $adMessage = " Ad platform draft prepared ({$ads['campaigns']} ads" . ($ads['credit_note'] ? ', plus a credit note' : '') . ').';
+            }
+        } catch (RuntimeException $e) {
+            $adMessage = ' ' . $e->getMessage();
+        }
+
         try {
             $result = $this->invoices->platformFeeDraft($month);
         } catch (RuntimeException $e) {
-            return back()->with('error', $e->getMessage());
+            return back()->with($adMessage ? 'success' : 'error', $e->getMessage() . $adMessage);
         }
 
         if (!$result['invoice'] && !$result['credit_note']) {
-            return back()->with('error', 'No completed or no-show bookings picked up in ' . $month->format('F Y') . ' are left to bill.');
+            return back()->with($adMessage ? 'success' : 'error', 'No completed or no-show bookings picked up in ' . $month->format('F Y') . ' are left to bill.' . $adMessage);
         }
 
         $message = 'Draft platform-fee invoice prepared for ' . $month->format('F Y') . " ({$result['bookings']} bookings).";
         if ($result['credit_note']) {
             $message .= ' A draft credit note was also prepared for bookings refunded after earlier invoicing.';
         }
+        $message .= $adMessage;
 
         return redirect()->route('admin.invoices.index', ['month' => $month->format('Y-m'), 'type' => Invoice::PLATFORM_FEE])->with('success', $message . ' Review it, then click Issue.');
     }
@@ -113,7 +124,7 @@ class InvoiceController extends Controller
         $errors = [];
         // Customer documents only — platform-fee invoices are reviewed and issued one by one.
         Invoice::where('status', Invoice::DRAFT)
-            ->whereIn('type', [Invoice::RECEIPT_VOUCHER, Invoice::TAX_INVOICE, Invoice::REFUND_VOUCHER])
+            ->whereIn('type', [Invoice::RECEIPT_VOUCHER, Invoice::TAX_INVOICE, Invoice::REFUND_VOUCHER, Invoice::AD_INVOICE])
             ->orderBy('id')->get()
             ->each(function (Invoice $invoice) use (&$issued, &$errors) {
                 try {
@@ -130,7 +141,7 @@ class InvoiceController extends Controller
     public function markPaid(Invoice $invoice)
     {
         $this->authorizeAdmin();
-        abort_unless($invoice->type === Invoice::PLATFORM_FEE && $invoice->isIssued(), 404);
+        abort_unless(in_array($invoice->type, [Invoice::PLATFORM_FEE, Invoice::AD_PLATFORM_FEE], true) && $invoice->isIssued(), 404);
         $invoice->paid_at = $invoice->paid_at ? null : now();
         $invoice->save();
 
@@ -168,7 +179,7 @@ class InvoiceController extends Controller
                     $inv->recipient['gstin'] ?? '', $inv->recipient['name'] ?? '', $inv->place_of_supply,
                     $inv->sac_code, $inv->taxable_value, $inv->cgst_rate, $inv->cgst_amount, $inv->sgst_rate,
                     $inv->sgst_amount, $inv->igst_rate, $inv->igst_amount, $inv->total,
-                    optional($inv->related)->number, optional($inv->booking)->booking_id,
+                    optional($inv->related)->number, optional($inv->booking)->booking_id ?? optional($inv->adCampaign)->reference,
                 ]);
             }
             fclose($out);

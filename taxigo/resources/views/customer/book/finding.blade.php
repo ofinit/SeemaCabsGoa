@@ -5,14 +5,28 @@
 
 @section('content')
 <div class="min-h-screen flex flex-col px-4 pt-6 pb-10"
-     x-data="findingTaxi(@js($topAd ?? null), @js($bottomAd ?? null))" x-init="init">
+     x-data="findingTaxi(@js($topAd ?? null), @js($bottomAd ?? null), @js($fullAd ?? null))" x-init="init">
+
+    {{-- P13 full-screen takeover: once per search, closable after 3 s, banners hidden while open. --}}
+    <template x-if="full.ad && full.open">
+        <div class="fixed inset-0 z-50 bg-black flex flex-col">
+            <a :href="full.ad.click_url || full.ad.banner_url || '#'" target="_blank" rel="noopener sponsored"
+               :data-ad-id="full.ad.id" data-ad-screen="11" class="relative flex-1 min-h-0 flex items-center justify-center">
+                <img :src="full.ad.banner_image" class="max-h-full max-w-full object-contain" alt="Advertisement">
+                <span class="absolute top-3 left-3 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">Sponsored</span>
+            </a>
+            <button type="button" class="absolute top-3 right-3 rounded-full bg-white/90 text-ink text-sm font-bold px-3 py-1.5 disabled:opacity-60"
+                    :disabled="full.wait > 0" @click="full.open = false" x-text="full.wait > 0 ? 'Close in ' + full.wait : 'Close ✕'"></button>
+            <div class="h-1 bg-white/20"><div class="h-full bg-gold" :style="`width: ${progress}%`"></div></div>
+        </div>
+    </template>
 
     <div class="flex-1 space-y-6">
         <template x-for="slot in ads" :key="slot.key">
-            <div x-show="slot.ad" style="display:none">
+            <div x-show="slot.ad && !(full.ad && full.open)" style="display:none">
                 <h2 class="font-semibold text-ink mb-2">Advertisement</h2>
                 <a :href="slot.ad && (slot.ad.click_url || slot.ad.banner_url || '#')" target="_blank" rel="noopener sponsored"
-                   :data-ad-id="slot.ad && slot.ad.id" :data-ad-screen="slot.screen"
+                   :data-ad-id="slot.ad && slot.ad.id" :data-ad-screen="slot.ad && slot.ad.screen || slot.screen"
                    class="card p-0 overflow-hidden block relative">
                     <img :src="slot.ad && slot.ad.banner_image" class="w-full h-auto" alt="Advertisement">
                     <span class="absolute top-1.5 right-1.5 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">Sponsored</span>
@@ -49,8 +63,9 @@
 
 @push('scripts')
 <script>
-    function findingTaxi(topAd = null, bottomAd = null) {
+    function findingTaxi(topAd = null, bottomAd = null, fullAd = null) {
         return {
+            full: { ad: fullAd, open: !!fullAd, wait: 3 },
             // Screen ids match screen_prices: 3 = finding-a-taxi top, 8 = bottom.
             ads: [{ key: 'top', screen: 3, ad: topAd }, { key: 'bottom', screen: 8, ad: bottomAd }],
             progress: 0,
@@ -62,6 +77,9 @@
 
                 if (!this.ads[0].ad && !this.ads[1].ad) {
                     this.loadAds();
+                }
+                if (this.full.open) {
+                    const t = setInterval(() => { if (--this.full.wait <= 0) clearInterval(t); }, 1000);
                 }
 
                 const durationMs = 12000;

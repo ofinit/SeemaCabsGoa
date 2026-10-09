@@ -167,14 +167,20 @@ class PageController extends Controller
 
     public function finding(Request $request)
     {
-        // Finding-a-taxi has its own top and bottom slots (screen 3 / screen 8).
-        $top = AdServer::forScreen(AdServer::SCREEN_FINDING_TOP, 1)->first();
-        $bottom = AdServer::forScreen(AdServer::SCREEN_FINDING_BOTTOM, 1)->first();
+        // Finding-a-taxi: top (3) or the large card (10) that replaces it, bottom (8),
+        // and an optional full-screen takeover (11). Rotation picks one of each at random.
+        $pick = fn (int $screen) => AdServer::onScreen(AdServer::live(), $screen)->inRandomOrder()->first();
+        $large = $pick(AdServer::SCREEN_FINDING_LARGE);
+        $top = $large ? null : AdServer::forScreen(AdServer::SCREEN_FINDING_TOP, 5)->shuffle()->first();
+        $bottom = AdServer::forScreen(AdServer::SCREEN_FINDING_BOTTOM, 5)->shuffle()->first();
+        $full = $pick(AdServer::SCREEN_FINDING_FULL);
 
-        $topAd = $top ? AdServer::payload($top, AdServer::SCREEN_FINDING_TOP, 'pwa') : null;
-        $bottomAd = $bottom && $bottom->id !== $top?->id ? AdServer::payload($bottom, AdServer::SCREEN_FINDING_BOTTOM, 'pwa') : null;
+        $topAd = $large ? AdServer::payload($large, AdServer::SCREEN_FINDING_LARGE, 'pwa')
+            : ($top ? AdServer::payload($top, AdServer::SCREEN_FINDING_TOP, 'pwa') : null);
+        $bottomAd = $bottom && $bottom->id !== ($large ?? $top)?->id ? AdServer::payload($bottom, AdServer::SCREEN_FINDING_BOTTOM, 'pwa') : null;
+        $fullAd = $full ? AdServer::payload($full, AdServer::SCREEN_FINDING_FULL, 'pwa') : null;
 
-        return view('customer.book.finding', compact('topAd', 'bottomAd'));
+        return view('customer.book.finding', compact('topAd', 'bottomAd', 'fullAd'));
     }
 
     public function review()
@@ -417,15 +423,6 @@ class PageController extends Controller
             'cities' => $cities,
             'accountData' => $accountData,
         ]);
-    }
-
-    public function advertise(Request $request)
-    {
-        // Showcase of everything currently live (approved, paid, in its time window).
-        $ads = AdServer::live()->orderByDesc('id')->limit(10)->get()
-            ->map(fn ($ad) => AdServer::payload($ad, null, 'pwa'));
-
-        return view('customer.advertise', compact('ads'));
     }
 
     /*

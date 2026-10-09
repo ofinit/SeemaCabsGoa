@@ -23,6 +23,16 @@ class PreparePlatformFeeInvoice extends Command
             ? Carbon::createFromFormat('Y-m', $this->argument('month'), 'Asia/Kolkata')->startOfMonth()
             : now('Asia/Kolkata')->subMonthNoOverflow()->startOfMonth();
 
+        // Ad platform & operations (self-serve ads) — a separate monthly invoice.
+        try {
+            $ads = $invoices->adPlatformDraft($month);
+            if ($ads['invoice'] || $ads['credit_note']) {
+                $this->info("Ad platform draft for {$month->format('F Y')}: {$ads['campaigns']} ad(s).");
+            }
+        } catch (\RuntimeException $e) {
+            $this->warn($e->getMessage());
+        }
+
         try {
             $result = $invoices->platformFeeDraft($month);
         } catch (\RuntimeException $e) {

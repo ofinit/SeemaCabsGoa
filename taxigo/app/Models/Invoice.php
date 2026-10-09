@@ -14,6 +14,9 @@ class Invoice extends Model
     public const REFUND_VOUCHER = 'refund_voucher';
     public const CREDIT_NOTE = 'credit_note';
     public const PLATFORM_FEE = 'platform_fee';
+    // Advertising: Seema Holidays → advertiser, and OfinIT → Seema Holidays (monthly).
+    public const AD_INVOICE = 'ad_invoice';
+    public const AD_PLATFORM_FEE = 'ad_platform_fee';
 
     public const DRAFT = 'draft';
     public const ISSUED = 'issued';
@@ -24,6 +27,8 @@ class Invoice extends Model
         self::REFUND_VOUCHER => 'Refund Voucher',
         self::CREDIT_NOTE => 'Credit Note',
         self::PLATFORM_FEE => 'Tax Invoice (Platform Fee)',
+        self::AD_INVOICE => 'Tax Invoice (Advertising)',
+        self::AD_PLATFORM_FEE => 'Tax Invoice (Ad Platform)',
     ];
 
     /** Number series code per document type. */
@@ -33,6 +38,8 @@ class Invoice extends Model
         self::REFUND_VOUCHER => 'RF',
         self::CREDIT_NOTE => 'CN',
         self::PLATFORM_FEE => 'PF',
+        self::AD_INVOICE => 'AD',
+        self::AD_PLATFORM_FEE => 'AP',
     ];
 
     protected $guarded = ['id'];
@@ -57,6 +64,11 @@ class Invoice extends Model
     public function booking(): BelongsTo
     {
         return $this->belongsTo(BookingDetail::class, 'booking_id');
+    }
+
+    public function adCampaign(): BelongsTo
+    {
+        return $this->belongsTo(AdCampaign::class, 'ad_campaign_id');
     }
 
     public function related(): BelongsTo

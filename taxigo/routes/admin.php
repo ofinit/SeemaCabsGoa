@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\AccountController;
 use App\Http\Controllers\Admin\ActiveAddController;
+use App\Http\Controllers\Admin\AdCampaignController;
 use App\Http\Controllers\Admin\AuthController;
 use App\Http\Controllers\Admin\BaseFareController;
 use App\Http\Controllers\Admin\CabManagementController;
@@ -275,6 +276,24 @@ Route::group(['prefix' => 'admin', 'middleware' => ['auth', 'TwoFa'], 'as' => 'a
             Route::get('/', [ExpiredController::class, 'index'])->name('index');
             Route::post('/', [ExpiredController::class, 'list'])->name('list');
             Route::post('/renew-ad/{advertisement}', [ExpiredController::class, 'renew'])->name('renew');
+        });
+
+        // Self-serve ads: review queue, placements & pricing, advertisers.
+        Route::prefix('self-serve')->name('selfServe.')->controller(AdCampaignController::class)->group(function () {
+            Route::get('/', 'index')->name('index');
+            Route::get('/placements', 'placements')->name('placements');
+            Route::post('/placements', 'savePlacements')->name('placements.save');
+            Route::post('/settings', 'saveSettings')->name('settings.save');
+            Route::post('/categories', 'saveCategories')->name('categories.save');
+            Route::get('/advertisers', 'advertisers')->name('advertisers');
+            Route::post('/advertisers/{advertiser}', 'updateAdvertiser')->name('advertisers.update');
+            Route::get('/licences/{licence}', 'licence')->name('licences.show');
+            Route::post('/licences/{licence}', 'verifyLicence')->name('licences.verify');
+            Route::get('/{campaign}', 'show')->whereNumber('campaign')->name('show');
+            Route::post('/{campaign}/decide', 'decide')->whereNumber('campaign')->name('decide');
+            Route::post('/{campaign}/pause', 'pause')->whereNumber('campaign')->name('pause');
+            Route::post('/{campaign}/cancel', 'cancel')->whereNumber('campaign')->name('cancel');
+            Route::post('/{campaign}/retry-transfer', 'retryTransfer')->whereNumber('campaign')->name('retryTransfer');
         });
 
         // Screen Price

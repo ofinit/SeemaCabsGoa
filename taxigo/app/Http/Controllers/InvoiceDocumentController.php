@@ -22,7 +22,10 @@ class InvoiceDocumentController extends Controller
     {
         $customerId = auth('customer')->id();
         abort_unless(
-            $invoice->isIssued() && $customerId && (int) optional($invoice->booking)->customer_id === (int) $customerId,
+            $invoice->isIssued() && $customerId && (
+                (int) optional($invoice->booking)->customer_id === (int) $customerId
+                || (int) optional($invoice->adCampaign)->user_id === (int) $customerId
+            ),
             404
         );
 
@@ -31,7 +34,7 @@ class InvoiceDocumentController extends Controller
 
     private function render(Invoice $invoice)
     {
-        $invoice->load('lines', 'booking', 'related');
+        $invoice->load('lines', 'booking', 'related', 'adCampaign');
 
         return response()
             ->view('invoices.document', compact('invoice'))

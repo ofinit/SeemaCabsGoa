@@ -5,6 +5,7 @@
 @section('content')
 <div class="pt-4 pb-20" x-data="ridesList(@js($rides ?? []))">
     @include('customer.components.topbar', ['title' => 'Ride History'])
+    @include('customer.components.ad-slot', ['screen' => \App\Services\Ads\AdServer::SCREEN_ACCOUNT, 'class' => 'px-4 mb-4'])
 
     <div class="px-4">
         <!-- FILTER TABS -->

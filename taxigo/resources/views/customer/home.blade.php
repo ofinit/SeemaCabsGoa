@@ -115,7 +115,7 @@
         </div>
 
         {{-- Advertisements Carousel --}}
-        @if(!empty($ads))
+        @if(count($ads))
             <div x-data="{
                 ads: @js($ads), active: 0, timer: null,
                 init() {
@@ -151,6 +151,9 @@
                 </div>
             </div>
         @endif
+
+        {{-- P2 inline ad card --}}
+        @include('customer.components.ad-slot', ['screen' => \App\Services\Ads\AdServer::SCREEN_HOME_INLINE])
 
         {{-- Fleet Overview --}}
         <div>

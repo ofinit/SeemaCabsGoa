@@ -4,9 +4,12 @@ namespace App\Http\Controllers\Api;
 
 use App\Enums\Type;
 use App\Http\Controllers\Controller;
+use App\Models\AdCampaign;
 use App\Models\BookingDetail;
 use App\Models\Payment;
 use App\Models\UserFcmToken;
+use App\Services\Ads\AdCampaignService;
+use App\Services\Ads\AdPaymentService;
 use App\Services\CashfreeService;
 use App\Services\Invoicing\InvoiceService;
 use App\Services\Payments\PlatformFeeTransferService;
@@ -68,6 +71,21 @@ class CashfreeWebhookController extends Controller
 
         if (!$orderId) {
             Log::warning('Cashfree payment webhook missing order_id.');
+            return;
+        }
+
+        // Self-serve ad orders (ADS_<campaign id>_<time>) — verified with Cashfree, never trusted from the webhook body.
+        if (preg_match('/^' . AdPaymentService::CASHFREE_PREFIX . '(\d+)_\d+$/', $orderId, $m)) {
+            $campaign = AdCampaign::find($m[1]);
+            if ($campaign && !$campaign->isPaid()) {
+                $result = app(AdPaymentService::class)->verify($campaign, 'cashfree', $orderId);
+                if ($result['ok']) {
+                    app(AdCampaignService::class)->paymentReceived($campaign, 'cashfree', $result['transaction_id']);
+                    Log::info("Ad {$campaign->reference} marked as paid via Cashfree webhook.");
+                } else {
+                    Log::warning("Cashfree webhook for ad order {$orderId} not confirmed: {$result['message']}");
+                }
+            }
             return;
         }
 
@@ -152,6 +170,10 @@ class CashfreeWebhookController extends Controller
         $refundAmount = (float) ($refundData['refund_amount'] ?? 0);
 
         if ($refundStatus !== 'SUCCESS' || !$orderId) {
+            return;
+        }
+        // Ad refunds are recorded when they are made (AdPaymentService::refund).
+        if (str_starts_with($orderId, AdPaymentService::CASHFREE_PREFIX)) {
             return;
         }
 

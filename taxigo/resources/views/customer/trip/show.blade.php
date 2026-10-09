@@ -66,6 +66,17 @@
                     </div>
                 </template>
 
+                {{-- Ads (P5 booking confirmed / P6 driver details / P7 ride complete); never above the driver card or SOS. --}}
+                <template x-if="!booking.assignDriver && booking.status != 3 && booking.status != 4 && booking.status != 5">
+                    <div>@include('customer.components.ad-slot', ['screen' => \App\Services\Ads\AdServer::SCREEN_BOOKING_CONFIRMED])</div>
+                </template>
+                <template x-if="booking.assignDriver && booking.status != 3 && booking.status != 4 && booking.status != 5">
+                    <div>@include('customer.components.ad-slot', ['screen' => \App\Services\Ads\AdServer::SCREEN_DRIVER_DETAILS])</div>
+                </template>
+                <template x-if="booking.status == 4">
+                    <div>@include('customer.components.ad-slot', ['screen' => \App\Services\Ads\AdServer::SCREEN_RATING])</div>
+                </template>
+
                 <!-- QUICK ACTIONS (CALL DRIVER / SOS) -->
                 <div class="grid grid-cols-2 gap-3">
                     <a :href="booking.assignDriver ? ('tel:' + booking.assignDriver.driver_mobile) : '#'"

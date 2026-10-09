@@ -17,6 +17,7 @@ class Kernel extends ConsoleKernel
         // Draft (not issue) last month's OfinIT platform-fee invoice for admin review.
         // Requires `php artisan schedule:run` every minute (Coolify scheduled task).
         $schedule->command('invoices:platform-fee')->monthlyOn(1, '06:00')->timezone('Asia/Kolkata');
+        $schedule->command('ads:maintain')->hourly()->withoutOverlapping();
     }
 
     /**

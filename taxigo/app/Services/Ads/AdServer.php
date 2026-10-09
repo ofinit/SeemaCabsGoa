@@ -25,6 +25,11 @@ class AdServer
     public const SCREEN_RATING = 6;
     public const SCREEN_ACCOUNT = 7;
     public const SCREEN_FINDING_BOTTOM = 8;
+    // Added with self-serve ads (PWA only; older app versions never get these shapes).
+    public const SCREEN_HOME_INLINE = 9;
+    public const SCREEN_FINDING_LARGE = 10;
+    public const SCREEN_FINDING_FULL = 11;
+    public const PWA_ONLY_SCREENS = [self::SCREEN_HOME_INLINE, self::SCREEN_FINDING_LARGE, self::SCREEN_FINDING_FULL];
 
     /** Approved, paid ads whose date + time window contains now (IST). */
     public static function live(): Builder

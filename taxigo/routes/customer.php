@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Customer\AccountController;
+use App\Http\Controllers\Customer\AdvertiseController;
 use App\Http\Controllers\Customer\AuthController;
 use App\Http\Controllers\Customer\BookingController;
 use App\Http\Controllers\Customer\PageController;
@@ -69,7 +70,12 @@ Route::prefix('app')->name('customer.')->group(function () {
         Route::get('account', [PageController::class, 'account'])->name('account');
         Route::get('notifications', [PageController::class, 'notifications'])->name('notifications');
         Route::get('discover/{package}', [PageController::class, 'discoverPackage'])->name('discover');
-        Route::get('advertise', [PageController::class, 'advertise'])->name('advertise');
+        // Self-serve advertising (ads plan, Phase 1).
+        Route::get('advertise', [AdvertiseController::class, 'index'])->name('advertise');
+        Route::get('advertise/new', [AdvertiseController::class, 'create'])->name('ads.create');
+        Route::get('advertise/cashfree/return', [AdvertiseController::class, 'cashfreeReturn'])->name('ads.cashfree-return');
+        Route::get('advertise/{campaign}', [AdvertiseController::class, 'show'])->whereNumber('campaign')->name('ads.show');
+        Route::get('advertise/{campaign}/edit', [AdvertiseController::class, 'edit'])->whereNumber('campaign')->name('ads.edit');
         Route::get('invoices/{invoice}', [InvoiceDocumentController::class, 'customer'])->name('invoices.show');
 
         Route::prefix('actions')->name('actions.')->group(function () {
@@ -96,6 +102,21 @@ Route::prefix('app')->name('customer.')->group(function () {
             Route::get('account', [AccountController::class, 'show'])->name('account.show');
             Route::post('account', [AccountController::class, 'update'])->name('account.update');
             Route::post('account/delete', [AccountController::class, 'delete'])->name('account.delete');
+
+            Route::prefix('ads')->name('ads.')->controller(AdvertiseController::class)->group(function () {
+                Route::post('profile', 'saveProfile')->name('profile');
+                Route::post('licences', 'uploadLicence')->middleware('throttle:20,1')->name('licences');
+                Route::get('availability', 'availability')->name('availability');
+                Route::post('quote', 'quote')->name('quote');
+                Route::post('campaigns', 'saveCampaign')->name('campaigns.store');
+                Route::post('campaigns/{campaign}', 'saveCampaign')->whereNumber('campaign')->name('campaigns.update');
+                Route::post('campaigns/{campaign}/creatives', 'uploadCreative')->whereNumber('campaign')->middleware('throttle:30,1')->name('campaigns.creatives');
+                Route::post('campaigns/{campaign}/checkout', 'checkout')->whereNumber('campaign')->middleware('throttle:20,1')->name('campaigns.checkout');
+                Route::post('campaigns/{campaign}/confirm', 'confirm')->whereNumber('campaign')->name('campaigns.confirm');
+                Route::post('campaigns/{campaign}/resubmit', 'resubmit')->whereNumber('campaign')->name('campaigns.resubmit');
+                Route::post('campaigns/{campaign}/discard', 'discard')->whereNumber('campaign')->name('campaigns.discard');
+                Route::post('campaigns/{campaign}/renew', 'renew')->whereNumber('campaign')->name('campaigns.renew');
+            });
         });
     });
 });

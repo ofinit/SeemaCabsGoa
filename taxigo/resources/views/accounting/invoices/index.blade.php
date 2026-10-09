@@ -117,6 +117,7 @@
                                         <td>{{ optional($invoice->issue_date)->format('d-m-Y') ?? '—' }}</td>
                                         <td>
                                             @if ($invoice->booking) {{ $invoice->booking->booking_id }}
+                                            @elseif ($invoice->adCampaign && !$invoice->period_start) <a href="{{ route('admin.advertisements.selfServe.show', $invoice->adCampaign) }}">{{ $invoice->adCampaign->reference }}</a>
                                             @elseif ($invoice->period_start) {{ $invoice->period_start->format('M Y') }} @endif
                                         </td>
                                         <td>{{ $invoice->recipient['name'] ?? '' }}@if(!empty($invoice->recipient['gstin']))<br><small class="text-muted">{{ $invoice->recipient['gstin'] }}</small>@endif</td>
@@ -131,7 +132,7 @@
                                                     <button class="btn btn-sm btn-light-success" type="submit">Issue</button>
                                                 </form>
                                             @endunless
-                                            @if ($invoice->type === Invoice::PLATFORM_FEE && $invoice->isIssued())
+                                            @if (in_array($invoice->type, [Invoice::PLATFORM_FEE, Invoice::AD_PLATFORM_FEE], true) && $invoice->isIssued())
                                                 <form method="POST" action="{{ route('admin.invoices.markPaid', $invoice) }}" class="d-inline">
                                                     @csrf
                                                     <button class="btn btn-sm {{ $invoice->paid_at ? 'btn-light-success' : 'btn-light-secondary' }}" type="submit">{{ $invoice->paid_at ? 'Paid' : 'Mark paid' }}</button>

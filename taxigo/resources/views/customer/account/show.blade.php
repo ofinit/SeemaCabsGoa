@@ -174,6 +174,7 @@
             @include('customer.components.ios-install-sheet')
         </div>
 
+        @include('customer.components.ad-slot', ['screen' => \App\Services\Ads\AdServer::SCREEN_ACCOUNT])
         <form action="{{ route('customer.logout') }}" method="POST">
             @csrf
             <button type="submit" class="w-full py-3 rounded-2xl border border-sand bg-white text-ink text-xs font-bold hover:bg-sand/30 transition-all shadow-xs">

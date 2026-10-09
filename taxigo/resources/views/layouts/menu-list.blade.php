@@ -84,6 +84,11 @@
         </a>
         <ul class="pc-submenu">
             <!-- <li class="pc-item"><a class="pc-link" href="{{ asset('/advertisements/add-advertisers') }}">Add Advertisers</a></li> -->
+            @php($adReviewCount = \App\Models\AdCampaign::where('status', \App\Models\AdCampaign::IN_REVIEW)->count())
+            <li class="pc-item"><a class="pc-link" href="{{ route('admin.advertisements.selfServe.index') }}">Ad Review Queue
+                    @if ($adReviewCount)<span class="badge bg-danger ms-1">{{ $adReviewCount }}</span>@endif</a></li>
+            <li class="pc-item"><a class="pc-link" href="{{ route('admin.advertisements.selfServe.placements') }}">Placements &amp; Pricing</a></li>
+            <li class="pc-item"><a class="pc-link" href="{{ route('admin.advertisements.selfServe.advertisers') }}">Advertisers</a></li>
             <li class="pc-item"><a class="pc-link" href="{{ route('admin.advertisements.index') }}">Submit Ads</a></li>
             {{-- <li class="pc-item"><a class="pc-link" href="{{ asset('/advertisements/pending-ads') }}">Pending Ads</a>
             </li> --}}

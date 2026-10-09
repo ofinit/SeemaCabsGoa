@@ -245,6 +245,7 @@
                     </div>
                 </div>
                 <a :href="'/app/trip/' + bookingId" class="btn-primary w-full py-3 text-sm font-bold">View Trip Details</a>
+                @include('customer.components.ad-slot', ['screen' => \App\Services\Ads\AdServer::SCREEN_BOOKING_CONFIRMED, 'class' => 'mt-4 text-left'])
             </div>
         </div>
     </template>

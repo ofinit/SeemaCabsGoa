@@ -66,13 +66,19 @@ class AdvertisementController extends ResponseController
                 array_map('intval', (array) json_decode((string) $ad->screens, true)),
                 true
             );
-            $allAds = $query->orderByDesc('id')->get();
+            // New PWA-only shapes (inline card, large card, full screen) would
+            // be stretched by older app builds, so the legacy lists skip them.
+            $legacyOnly = fn ($ad) => array_diff(
+                array_map('intval', (array) json_decode((string) $ad->screens, true)),
+                AdServer::PWA_ONLY_SCREENS
+            ) !== [];
+            $allAds = $query->orderByDesc('id')->get()->filter($legacyOnly)->values();
             $bottomAds = $allAds->filter($isBottom)->values();
             $topAds = $allAds->reject($isBottom)->values();
 
             if ($topAds->isEmpty()) {
                 $topAds = Advertisement::where('default', 1)->where('approval_status', Advertisement::APPROVED)
-                    ->orderByDesc('id')->get()->reject($isBottom)->values();
+                    ->orderByDesc('id')->get()->filter($legacyOnly)->reject($isBottom)->values();
             }
             if ($bottomAds->isEmpty()) {
                 $bottomAds = AdServer::forScreen(AdServer::SCREEN_FINDING_BOTTOM);

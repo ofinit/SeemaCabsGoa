@@ -1,8 +1,8 @@
 # Seema Cabs Goa — Self-Serve Advertising: End-to-End Plan
 
-**Status:** plan, not implemented · **Revision 3** (consolidated; replaces
-revisions 1–2) · **Owners:** Seema Holidays (seller of ad space) and OfinIT
-Solutions Pvt. Ltd. (platform)
+**Status:** Phase 0 and Phase 1 built (see §21) · **Revision 3** (consolidated;
+replaces revisions 1–2) · **Owners:** Seema Holidays (seller of ad space) and
+OfinIT Solutions Pvt. Ltd. (platform)
 
 Businesses in Goa (casinos, clubs, pubs, hotels, restaurants, rentals, tours,
 real estate) buy and manage ads inside the Seema Cabs Goa app (PWA + Android/
@@ -515,3 +515,41 @@ shape so current app versions keep working.
 4. **Who reviews** ads (names for first and second approval) and the 24-hour SLA.
 5. **Android / iOS apps:** update in Phase 1, or rely on the unchanged API until Phase 3?
 6. **Fleet size** for the in-cab QR programme (sets P18 packages).
+
+---
+
+## 21. Implementation status
+
+**Phase 0 (built):** only paid + approved ads inside their date and time
+window are served; per-screen slots; screen 3 / 8 fixed; "Sponsored" label;
+signed click redirect with UTM; viewable impressions; no click GPS.
+
+**Phase 1 (built):**
+
+| Area | Where |
+|---|---|
+| Tables (`ad_placements`, `ad_categories`, `ad_advertisers`, `ad_licences`, `ad_campaigns`, `ad_campaign_placements`, `ad_creatives`, `ad_reviews`) | migration `2026_10_10_000001` |
+| Placements P1–P8, P12, P13 with the §5.2 rate card; categories with tiers, licence and two-admin flags | seeded by the migration; edited in Admin → Advertisements → Placements & Pricing |
+| PWA: business profile, licence upload, wizard (placements → dates with sold-out days → crop per shape → link → checklist → pay), My ads with views / taps / CTR, invoices, renew | `/app/advertise`, `Customer\AdvertiseController` |
+| Crop → WebP: Cropper.js in the browser; server validates type / size, keeps the original privately, strips metadata, crops, resizes to master, WebP ≤ 150 KB | `AdCreativeProcessor` |
+| Pricing: per day × tier, 7-day minimum, 14+ −10%, 30+ −20%, GST 18% (CGST + SGST, IGST for other-state GSTINs), Seema 10% / OfinIT 90% + GST | `AdPricing`, `AdSettings` |
+| Checkout on Seema's Razorpay / Cashfree; gateway verification; OfinIT split (Route transfer / Easy Split); 15-minute slot hold; webhook + hourly reconciliation | `AdPaymentService`, `CashfreeWebhookController`, `ads:maintain` |
+| Review queue with the §11 checklist, reason codes, two-admin rule (category or automated flags), approve / request changes / reject with automatic refund, pause, cancel with pro-rata refund | Admin → Advertisements → Ad Review Queue, `AdCampaignService` |
+| GST documents: Seema → advertiser tax invoice (`…/AD…`), credit notes on refunds, monthly OfinIT → Seema ad-platform invoice (`…/AP…`) | `InvoiceService` |
+| Serving: approval creates one `advertisements` row per placement, so the Phase 0 server, mobile API and tracking are reused. New PWA slots: home inline (P2), booking confirmed (P5), driver details (P6), ride complete (P7), rides & account (P8), finding-a-taxi large card (P12) and full screen (P13) | `AdServer`, `customer.components.ad-slot` |
+| Expiry, 3-day renewal reminder, renewals with the same image and link go live without re-review | `ads:maintain` (hourly) |
+
+**Deferred to Phase 2:** targeting (area, trip type, platform, days / hours),
+bundles, peak pricing, exclusivity add-on, launch offer, coupons; phone OTP
+for the advertiser profile (the logged-in customer account is used); NSFW
+detection and Google Safe Browsing (keyword, shortener, duplicate-image and
+link checks are in); 1× / 2× image variants; frequency cap; Report-ad button
+and auto-pause on reports; licence-expiry auto-pause; weekly / final report
+emails and CSV / PDF export; GSTR-1 split of ad invoices by section beyond
+the existing export; P14–P18 placements. Older Android / iOS builds keep the
+unchanged API and never receive the new PWA-only shapes (P2, P12, P13).
+
+**Operations:** add the Coolify volume `/var/www/html/storage/app/ads`
+(licences and original images, private) and keep the scheduler running.
+Two admin accounts are needed for casino ads and flagged ads.
+
