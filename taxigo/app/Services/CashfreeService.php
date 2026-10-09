@@ -191,13 +191,15 @@ class CashfreeService
      */
     public function createSplit(string $orderId, array $splits): array
     {
+        // Split After Payment (Easy Split). disable_split=true closes the order for further splits.
         $payload = [
             'split' => $splits,
+            'disable_split' => true,
         ];
 
         $response = Http::withHeaders($this->getHeaders())
             ->timeout(20)
-            ->post($this->getBaseUrl() . '/orders/' . $orderId . '/split', $payload);
+            ->post($this->getBaseUrl() . '/easy-split/orders/' . $orderId . '/split', $payload);
 
         if (!$response->successful()) {
             $errorBody = $response->json();

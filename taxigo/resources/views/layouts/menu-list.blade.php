@@ -223,6 +223,9 @@
                 Payments</a></li>
         <li class="pc-item"><a class="pc-link" href="{{ route('admin.report.reconcileCancelledPayments') }}">Reconcile
                 Cancelled Payments</a></li>
+        @if (Auth()->user()->type == App\Enums\Type::ADMIN)
+        <li class="pc-item"><a class="pc-link" href="{{ route('admin.report.fleetPayouts') }}">Fleet Payouts</a></li>
+        @endif
         {{-- <li class="pc-item"><a class="pc-link" href="{{ asset('/reports/driver-payments') }}">Driver Payments</a>
         </li> --}}
         <!-- <li class="pc-item"><a class="pc-link" href="#">Trip Payments</a></li> -->

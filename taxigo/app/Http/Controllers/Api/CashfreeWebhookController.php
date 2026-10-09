@@ -9,6 +9,7 @@ use App\Models\Payment;
 use App\Models\UserFcmToken;
 use App\Services\CashfreeService;
 use App\Services\Invoicing\InvoiceService;
+use App\Services\Payments\FleetPayoutService;
 use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -127,11 +128,18 @@ class CashfreeWebhookController extends Controller
             ]);
             Log::info("Booking {$booking->booking_id} marked as paid via Cashfree webhook.");
 
+            $payment = Payment::where('booking_id', $booking->id)->where('pg_order_id', $orderId)->first();
             try {
-                $payment = Payment::where('booking_id', $booking->id)->where('pg_order_id', $orderId)->first();
                 app(InvoiceService::class)->receiptVoucher($booking->fresh(), $payment);
             } catch (\Throwable $e) {
                 Log::error("Receipt voucher failed for {$booking->booking_id}: " . $e->getMessage());
+            }
+            try {
+                if ($payment) {
+                    app(FleetPayoutService::class)->payout($booking->fresh(), $payment->fresh());
+                }
+            } catch (\Throwable $e) {
+                Log::error("Fleet payout record failed for {$booking->booking_id}: " . $e->getMessage());
             }
         }
     }

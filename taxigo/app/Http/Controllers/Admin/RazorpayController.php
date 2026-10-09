@@ -178,30 +178,4 @@ class RazorpayController extends Controller
             ], 500);
         }
     }
-
-
-    public function transferAmount($paymentId, $amount)
-    {
-        try {
-            $transfer = $this->razorpay->payment->fetch($paymentId)->transfer([
-                [
-                    'account' => 'acc_vendor123',
-                    'amount' => $amount,
-                    'currency' => 'INR',
-                    'notes' => ['purpose' => 'Vendor payout'],
-                    'on_hold' => false,
-                ]
-            ]);
-
-            if ($transfer->status === 'error') {
-                Log::info('Transfer amount failed : ' . $transfer->message);
-                return false;
-            }
-
-            return true;
-        } catch (\Exception $e) {
-            Log::info('Transfer amount failed : ' . $e->getMessage());
-            return false;
-        }
-    }
 }

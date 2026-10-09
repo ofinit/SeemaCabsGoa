@@ -20,6 +20,10 @@ class Payment extends Model
         'amount_settlement',
         'status',
         'transfer_amount_status',
+        'transfer_reference',
+        'transfer_amount',
+        'transfer_error',
+        'transferred_at',
     ];
 
 

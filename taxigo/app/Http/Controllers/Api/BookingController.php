@@ -29,6 +29,7 @@ use App\Models\CabPriceType;
 use App\Models\Invoice;
 use App\Models\SightSeeingPackageCabPrice;
 use App\Services\Invoicing\InvoiceService;
+use App\Services\Payments\FleetPayoutService;
 use App\Services\Payments\PaymentVerifier;
 use App\Services\Pricing\FareBreakdown;
 use App\Services\Pricing\FareCalculator;
@@ -250,24 +251,18 @@ class BookingController extends ResponseController
                 $paymentDetails->pg_order_id = $request->pg_order_id;
             }
 
-            // Transfer amount / split handling
-            $amountSettlement = json_decode($paymentDetails->amount_settlement);
-
-            if ($isCashfree) {
-                // In Cashfree, vendor split is handled via Easy Split order_splits at order creation
-                $paymentDetails->transfer_amount_status = Type::ACTIVE;
-            } elseif (!empty($amountSettlement->company_commission)) {
-                $transferAmount = $this->transferAmount($request->transaction_id, $amountSettlement->company_commission);
-                if (!$transferAmount) {
-                    $paymentDetails->transfer_amount_status = Type::INACTIVE;
-                } else {
-                    $paymentDetails->transfer_amount_status = Type::ACTIVE;
-                }
-            }
-
             $paymentDetails->save();
 
             DB::commit();
+
+            // Pay the fleet operator its share of the advance (Razorpay Route /
+            // Cashfree split). Never blocks the booking; failures show up in
+            // Admin → Reports → Fleet Payouts for retry.
+            try {
+                app(FleetPayoutService::class)->payout($bookingDetails, $paymentDetails->fresh());
+            } catch (\Throwable $th) {
+                Log::error("Fleet payout failed for {$bookingId}: " . $th->getMessage());
+            }
 
             try {
                 app(InvoiceService::class)->receiptVoucher($bookingDetails->fresh(), $paymentDetails);
@@ -358,59 +353,6 @@ class BookingController extends ResponseController
     }
 
 
-
-    public function transferAmount($paymentId, $amount)
-    {
-        try {
-            $fleetOperatorAccountDetails = FleetOperator::orderBy('id', 'ASC')->first()->razorpay_account;
-            Log::info("Fleet operator details :" . $fleetOperatorAccountDetails);
-            Log::info("Fleet operator details amount :" . $amount);
-            $paymentKey = Environment::where('title', Type::PAYMENT_KEY)->first()->value;
-            $paymentSecret = Environment::where('title', Type::PAYMENT_SECRETE)->first()->value;
-
-            $payment = new Api(
-                $paymentKey,
-                $paymentSecret
-            );
-
-            // capcher payment
-            $paymentCapcher = $payment->payment->fetch($paymentId);
-            $paymentCapcher->capture(['amount' => $paymentCapcher->amount]);
-            // Log::info('Amount Details :'.$paymentCapcher);
-
-            // $transfer = $payment->payment->fetch($paymentId)->transfer([
-            //     [
-            //         'account' => $fleetOperatorAccountDetails,
-            //         'amount' => $amount,
-            //         'currency' => 'INR',
-            //         'notes' => ['purpose' => 'Vendor payout'],
-            //         'on_hold' => false,
-            //     ]
-            // ]);
-            $transfer = $payment->payment->fetch($paymentId)->transfer([
-                'transfers' => [
-                    [
-                        'account' => $fleetOperatorAccountDetails,
-                        'amount' => intval($amount * 100),
-                        'currency' => 'INR',
-                        'notes' => ['purpose' => 'Vendor payout'],
-                        'on_hold' => false,
-                    ]
-                ]
-            ]);
-
-
-            if ($transfer->status === 'error') {
-                Log::info('Transfer amount failed : ' . $transfer->message);
-                return false;
-            }
-
-            return true;
-        } catch (\Exception $e) {
-            Log::info('Transfer amount failed : ' . $e->getMessage());
-            return false;
-        }
-    }
 
     public function cancelRide(Request $request)
     {
