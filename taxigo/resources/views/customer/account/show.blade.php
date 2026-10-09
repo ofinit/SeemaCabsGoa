@@ -174,6 +174,10 @@
             @include('customer.components.ios-install-sheet')
         </div>
 
+        <div class="card flex items-start justify-between gap-3" x-data="{ on: @js((bool) (auth('customer')->user()->ad_push_opt_in ?? false)), async toggle() { this.on = !this.on; try { await apiFetch(@js(route('customer.actions.ad-push-opt-in')), { method: 'POST', body: { on: this.on } }); } catch (e) { this.on = !this.on; } } }">
+            <div><p class="font-semibold text-ink text-sm">Offers from Goa businesses</p><p class="text-xs text-muted mt-0.5">At most one sponsored notification a week. Turn off any time.</p></div>
+            <button type="button" @click="toggle()" class="relative w-11 h-6 rounded-full transition-colors shrink-0" :class="on ? 'bg-gold' : 'bg-black/15'" :aria-pressed="on" aria-label="Offers from Goa businesses"><span class="absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform" :class="on && 'translate-x-5'"></span></button>
+        </div>
         @include('customer.components.ad-slot', ['screen' => \App\Services\Ads\AdServer::SCREEN_ACCOUNT])
         <form action="{{ route('customer.logout') }}" method="POST">
             @csrf

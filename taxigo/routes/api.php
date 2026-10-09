@@ -82,6 +82,9 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
 
     //Advertisement
     Route::post('/advertisement-click', [AdvertisementController::class, 'manageClick']);
+    // Sponsored-push consent (P11): GET status, POST {on: true|false}.
+    Route::get('/ads/push-opt-in', [\App\Http\Controllers\AdTrackingController::class, 'pushOptIn']);
+    Route::post('/ads/push-opt-in', [\App\Http\Controllers\AdTrackingController::class, 'pushOptIn']);
 
     //Notification List
     Route::prefix('notification')->name('notification.')->group(function () {
@@ -99,5 +102,9 @@ Route::group(['middleware' => 'auth:sanctum'], function () {
 
 // Advertisement
 Route::get('/advertisement-list', [AdvertisementController::class, 'index']);
+// Ads for app builds (docs/ADS_APP_INTEGRATION.md): one screen at a time, view beacon, report.
+Route::get('/ads', [AdvertisementController::class, 'index'])->middleware('throttle:120,1');
+Route::post('/ads/impressions', [\App\Http\Controllers\AdTrackingController::class, 'impressions'])->middleware('throttle:120,1');
+Route::post('/ads/report', [\App\Http\Controllers\AdTrackingController::class, 'report'])->middleware('throttle:10,1');
 Route::post('/create-order', [PaymentController::class, 'createOrder']);
 Route::post('/cashfree/create-order', [PaymentController::class, 'createCashfreeOrder']);

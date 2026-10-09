@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Customer;
 
 use App\Http\Controllers\Controller;
 use App\Models\AdAdvertiser;
+use App\Models\AdAgency;
 use App\Models\AdCampaign;
 use App\Models\AdBundle;
 use App\Models\AdCategory;
@@ -18,6 +19,7 @@ use App\Services\Ads\AdCampaignService;
 use App\Services\Ads\AdCreativeProcessor;
 use App\Services\Ads\AdPaymentService;
 use App\Services\Ads\AdPricing;
+use App\Services\Ads\AdPushService;
 use App\Services\Ads\AdReporting;
 use App\Services\Ads\AdServer;
 use App\Services\Ads\AdSettings;
@@ -26,6 +28,7 @@ use App\Support\Gstin;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
@@ -60,12 +63,10 @@ class AdvertiseController extends Controller
     public function index()
     {
         $user = Auth::guard('customer')->user();
-        $advertiser = AdAdvertiser::where('user_id', $user->id)->first();
-        $campaigns = $advertiser
-            ? AdCampaign::with('items.placement')->where('advertiser_id', $advertiser->id)
-                ->where(fn ($q) => $q->where('status', '!=', AdCampaign::CANCELLED)->orWhereNotNull('paid_at'))
-                ->latest('id')->limit(50)->get()
-            : collect();
+        // Agencies see every client's ads; everyone else their own.
+        $campaigns = AdCampaign::with('items.placement', 'advertiser')->where('user_id', $user->id)
+            ->where(fn ($q) => $q->where('status', '!=', AdCampaign::CANCELLED)->orWhereNotNull('paid_at'))
+            ->latest('id')->limit(100)->get();
 
         // Showcase of what's live right now.
         $ads = AdServer::live()->orderByDesc('id')->limit(10)->get()
@@ -75,6 +76,7 @@ class AdvertiseController extends Controller
             'ads' => $ads,
             'campaigns' => $campaigns,
             'enabled' => AdSettings::enabled(),
+            'agency' => AdAgency::where('user_id', $user->id)->first(),
         ]);
     }
 
@@ -99,7 +101,14 @@ class AdvertiseController extends Controller
             return redirect()->route('customer.advertise');
         }
         $user = Auth::guard('customer')->user();
-        $advertiser = AdAdvertiser::with('licences', 'category')->where('user_id', $user->id)->first();
+        if ($campaign) {
+            session(['ads_client' => $campaign->advertiser_id]);
+        }
+        $advertiser = $this->currentAdvertiser();
+        $agency = $this->approvedAgency();
+        if ($agency && request()->boolean('new_client') && !$campaign) {
+            $advertiser = null;
+        }
         $settings = AdSettings::load();
 
         return view('customer.ads.wizard', [
@@ -110,12 +119,19 @@ class AdvertiseController extends Controller
                 'licences' => [], 'tier' => null,
             ],
             'hasProfile' => (bool) $advertiser,
+            'agency' => $agency ? [
+                'name' => $agency->name,
+                'current' => $advertiser?->id,
+                'clients' => AdAdvertiser::where('user_id', $user->id)->orderBy('business_name')->get(['id', 'business_name']),
+            ] : null,
+            'pushAudience' => AdPushService::audienceSize(),
             'categories' => AdCategory::where('active', true)->orderBy('sort')->get(['id', 'name', 'tier', 'licence_label', 'licence_required', 'rules']),
             'placements' => AdPlacement::active()->get()->map(fn (AdPlacement $p) => [
                 'id' => $p->id, 'code' => $p->code, 'name' => $p->name, 'description' => $p->description,
                 'shape' => $p->shape, 'width' => $p->width, 'height' => $p->height, 'key' => $p->shapeKey(),
                 'slots' => $p->slots, 'exclusive' => $p->exclusive,
                 'price_standard' => $p->price_standard, 'price_premium' => $p->price_premium,
+                'billing' => $p->billing, 'unit' => $p->priceUnit(),
             ]),
             'rules' => [
                 'min_days' => (int) $settings[AdSettings::MIN_DAYS],
@@ -153,6 +169,42 @@ class AdvertiseController extends Controller
             'invoices' => $campaign->invoices->where('status', Invoice::ISSUED)->values(),
             'reasons' => collect($campaign->reason_codes ?? [])->map(fn ($c) => AdCampaign::REASON_CODES[$c] ?? $c)->all(),
         ]);
+    }
+
+    /** Turn on conversion tracking: a private token for the advertiser's tag. */
+    public function conversionToken(AdCampaign $campaign)
+    {
+        $this->own($campaign);
+        if (!$campaign->conversion_token) {
+            $campaign->forceFill(['conversion_token' => Str::random(24)])->save();
+        }
+
+        return response()->json(['status' => true, 'data' => ['redirect' => route('customer.ads.show', $campaign) . '#conversions']]);
+    }
+
+    /** Agencies: pick the client the next ad is for. */
+    public function switchClient(Request $request)
+    {
+        $id = (int) $request->input('id');
+        abort_unless($this->approvedAgency() && AdAdvertiser::where('user_id', Auth::guard('customer')->id())->whereKey($id)->exists(), 404);
+        session(['ads_client' => $id]);
+
+        return response()->json(['status' => true]);
+    }
+
+    /** Ask to become an agency account (admin approves). */
+    public function applyAgency(Request $request)
+    {
+        $data = $request->validate(['name' => 'required|string|max:120', 'gstin' => 'nullable|string|max:15']);
+        if (!empty($data['gstin']) && !Gstin::isValid(Gstin::normalize($data['gstin']))) {
+            return response()->json(['status' => false, 'message' => 'The GSTIN is not valid.'], 422);
+        }
+        AdAgency::updateOrCreate(
+            ['user_id' => Auth::guard('customer')->id()],
+            ['name' => $data['name'], 'gstin' => !empty($data['gstin']) ? Gstin::normalize($data['gstin']) : null]
+        );
+
+        return response()->json(['status' => true, 'message' => 'Thanks — we will review your agency account shortly.']);
     }
 
     /** Cashfree return_url for ad payments: verify with the gateway, then show the ad. */
@@ -203,11 +255,15 @@ class AdvertiseController extends Controller
         }
         $data['phone'] = substr(preg_replace('/\D/', '', $data['phone']), -10);
 
-        $advertiser = AdAdvertiser::where('user_id', $user->id)->first();
+        $agency = $this->approvedAgency();
+        $advertiser = ($agency && $request->boolean('new_client')) ? null : $this->currentAdvertiser();
         if ($advertiser?->isBlocked()) {
             return response()->json(['status' => false, 'message' => 'Your advertiser account is on hold. Please contact us.'], 403);
         }
-        $advertiser = AdAdvertiser::updateOrCreate(['user_id' => $user->id], $data);
+        $advertiser = $advertiser
+            ? tap($advertiser)->update($data)
+            : AdAdvertiser::create($data + ['user_id' => $user->id, 'agency_id' => $agency?->id]);
+        session(['ads_client' => $advertiser->id]);
 
         return response()->json(['status' => true, 'data' => $this->profileJson($advertiser->fresh(['licences', 'category']))]);
     }
@@ -243,17 +299,20 @@ class AdvertiseController extends Controller
         $exclude = $request->filled('campaign') ? (int) $request->input('campaign') : null;
         $groups = array_values(array_intersect((array) $request->input('page_groups', []), array_keys(AdTargeting::PAGE_GROUPS)));
 
-        return response()->json(['status' => true, 'data' => AdAvailability::soldOut($placements, $from, $to, $exclude, $groups)]);
+        $units = AdCampaignService::unitsFor($placements, ['page_groups' => $groups, 'cabs' => (int) $request->input('cabs', 1)]);
+
+        return response()->json(['status' => true, 'data' => AdAvailability::soldOut($placements, $from, $to, $exclude, $groups, $units)]);
     }
 
     public function quote(Request $request)
     {
-        $advertiser = AdAdvertiser::with('category')->where('user_id', Auth::guard('customer')->id())->first();
+        $advertiser = $this->currentAdvertiser();
         $request->validate([
             'placements' => 'required|array|min:1',
             'days' => 'required|integer|min:1|max:366',
             'start_date' => 'nullable|date_format:Y-m-d',
             'page_groups' => 'nullable|array',
+            'cabs' => 'nullable|integer|min:1|max:200',
             'exclusive_category' => 'nullable|boolean',
             'coupon_code' => 'nullable|string|max:30',
             'campaign' => 'nullable|integer',
@@ -264,7 +323,7 @@ class AdvertiseController extends Controller
             ->when($request->filled('campaign'), fn ($q) => $q->where('id', '!=', (int) $request->input('campaign')))->exists();
         $quote = AdPricing::quote($placements, optional($advertiser?->category)->tier ?? AdCategory::STANDARD, (int) $request->input('days'), $advertiser?->gstin, null, [
             'start_date' => $request->input('start_date'),
-            'units' => AdCampaignService::unitsFor($placements, ['page_groups' => (array) $request->input('page_groups', [])]),
+            'units' => AdCampaignService::unitsFor($placements, ['page_groups' => (array) $request->input('page_groups', []), 'cabs' => (int) $request->input('cabs', 1)]),
             'exclusive_category' => $request->boolean('exclusive_category'),
             'coupon' => $coupon,
             'first_booking' => $firstBooking,
@@ -294,6 +353,7 @@ class AdvertiseController extends Controller
         $advertiser = $this->advertiser();
         if ($campaign) {
             $this->own($campaign);
+            $advertiser = $campaign->advertiser()->with('category', 'licences')->first();
         } elseif (!AdSettings::enabled()) {
             return response()->json(['status' => false, 'message' => 'New ad bookings are paused right now. Please contact us.'], 403);
         }
@@ -306,6 +366,7 @@ class AdvertiseController extends Controller
             'landing_value' => 'nullable|string|max:500',
             'targeting' => 'nullable|array',
             'headline' => 'nullable|string|max:60',
+            'push_body' => 'nullable|string|max:160',
             'exclusive_category' => 'nullable|boolean',
             'coupon_code' => 'nullable|string|max:30',
         ]);
@@ -317,6 +378,7 @@ class AdvertiseController extends Controller
             $campaign = $this->ads->saveDraft($campaign, $advertiser, $data['placements'], $data['start_date'], (int) $data['days'], $data['landing_type'], (string) ($data['landing_value'] ?? ''), [
                 'targeting' => (array) ($data['targeting'] ?? []),
                 'headline' => $data['headline'] ?? null,
+                'push_body' => $data['push_body'] ?? null,
                 'exclusive_category' => $request->boolean('exclusive_category'),
                 'coupon_code' => $data['coupon_code'] ?? null,
             ]);
@@ -459,7 +521,7 @@ class AdvertiseController extends Controller
 
     private function advertiser(): AdAdvertiser
     {
-        $advertiser = AdAdvertiser::with('category', 'licences')->where('user_id', Auth::guard('customer')->id())->first();
+        $advertiser = $this->currentAdvertiser();
         if (!$advertiser) {
             abort(response()->json(['status' => false, 'message' => 'Add your business details first.'], 422));
         }
@@ -468,6 +530,27 @@ class AdvertiseController extends Controller
         }
 
         return $advertiser;
+    }
+
+    private function approvedAgency(): ?AdAgency
+    {
+        $agency = AdAgency::where('user_id', Auth::guard('customer')->id())->first();
+
+        return $agency && $agency->isApproved() ? $agency : null;
+    }
+
+    /** The advertiser profile being used: an agency's selected client, or the user's own. */
+    private function currentAdvertiser(): ?AdAdvertiser
+    {
+        $query = AdAdvertiser::with('category', 'licences')->where('user_id', Auth::guard('customer')->id());
+        if ($this->approvedAgency() && ($id = session('ads_client'))) {
+            $chosen = (clone $query)->whereKey($id)->first();
+            if ($chosen) {
+                return $chosen;
+            }
+        }
+
+        return $query->orderBy('id')->first();
     }
 
     private function checklistError(Request $request): ?string
@@ -529,6 +612,7 @@ class AdvertiseController extends Controller
             'landing_value' => $landingValue,
             'targeting' => $campaign->targeting ?? (object) [],
             'headline' => $campaign->headline,
+            'push_body' => $campaign->push_body,
             'exclusive_category' => (bool) $campaign->exclusive_category,
             'coupon_code' => $campaign->coupon_code,
             'creatives' => $campaign->creatives->mapWithKeys(fn ($c) => [$c->shape => ['url' => $c->url(), 'bytes' => $c->bytes]]),

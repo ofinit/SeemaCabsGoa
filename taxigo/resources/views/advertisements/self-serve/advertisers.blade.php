@@ -24,6 +24,40 @@
 
     <div class="row">
         <div class="col-12">@include('layouts.message')</div>
+        @if ($agencies->isNotEmpty())
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-header"><h5 class="mb-0">Agencies</h5><p class="small text-muted mb-0">An approved agency can book ads for several client businesses from one login.</p></div>
+                    <div class="card-body p-0">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead><tr><th>Agency</th><th>Login</th><th>GSTIN</th><th>Clients</th><th style="width:320px">Status</th></tr></thead>
+                            <tbody>
+                                @foreach ($agencies as $agency)
+                                    <tr>
+                                        <td class="fw-semibold">{{ $agency->name }}</td>
+                                        <td class="small">{{ $agency->user->name ?? '' }}<br>{{ $agency->user->email ?? '' }}</td>
+                                        <td class="small">{{ $agency->gstin ?: '—' }}</td>
+                                        <td>{{ $agency->clients_count }}</td>
+                                        <td>
+                                            <form method="POST" action="{{ route('admin.advertisements.selfServe.agencies.update', $agency) }}" class="d-flex gap-1">
+                                                @csrf
+                                                <select class="form-select form-select-sm" name="status" style="max-width:120px">
+                                                    @foreach (['pending' => 'Pending', 'approved' => 'Approved', 'blocked' => 'Blocked'] as $k => $v)
+                                                        <option value="{{ $k }}" @selected($agency->status === $k)>{{ $v }}</option>
+                                                    @endforeach
+                                                </select>
+                                                <input class="form-control form-control-sm" name="status_note" value="{{ $agency->status_note }}" placeholder="Note">
+                                                <button class="btn btn-sm btn-light-primary">Save</button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        @endif
         <div class="col-12">
             <div class="card">
                 <div class="card-body p-0">
@@ -33,7 +67,7 @@
                             <tbody>
                                 @forelse ($advertisers as $a)
                                     <tr>
-                                        <td class="fw-semibold">{{ $a->business_name }}<div class="small text-muted">since {{ $a->created_at->format('d-m-Y') }}</div></td>
+                                        <td class="fw-semibold">{{ $a->business_name }}<div class="small text-muted">since {{ $a->created_at->format('d-m-Y') }}{{ $a->agency_id ? ' · via agency' : '' }}</div></td>
                                         <td class="small">{{ $a->contact_name }}<br>{{ $a->phone }}<br>{{ $a->email }}</td>
                                         <td class="small">{{ $a->gstin ?: '—' }}</td>
                                         <td class="small">

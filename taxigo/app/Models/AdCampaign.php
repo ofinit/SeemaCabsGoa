@@ -102,6 +102,21 @@ class AdCampaign extends Model
         return $this->hasMany(Invoice::class, 'ad_campaign_id');
     }
 
+    public function qrCards(): HasMany
+    {
+        return $this->hasMany(AdQrCard::class, 'campaign_id');
+    }
+
+    public function pushSends(): HasMany
+    {
+        return $this->hasMany(AdPushSend::class, 'campaign_id');
+    }
+
+    public function conversions(): HasMany
+    {
+        return $this->hasMany(AdConversion::class, 'campaign_id');
+    }
+
     public function coupon(): BelongsTo
     {
         return $this->belongsTo(AdCoupon::class, 'coupon_id');

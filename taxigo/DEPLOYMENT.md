@@ -196,8 +196,9 @@ The app's scheduler drafts last month's OfinIT platform-fee and ad-platform
 invoices on the 1st at 06:00 IST (an admin reviews and issues them), and runs
 `ads:maintain` every hour (expires ended ads, sends renewal reminders, confirms
 ad payments the browser didn't, pauses ads with expired licences or broken
-links) and `ads:weekly-reports` on Mondays at 10:00 IST (needs working SMTP
-settings). In Coolify go to the app's
+links, sends scheduled sponsored pushes between 10:00 and 20:00 — needs the
+Firebase credentials file) and `ads:weekly-reports` on Mondays at 10:00 IST
+(needs working SMTP settings). In Coolify go to the app's
 **Scheduled Tasks → + Add**:
 
 | Name | Command | Frequency |

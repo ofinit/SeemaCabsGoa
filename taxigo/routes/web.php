@@ -45,6 +45,10 @@ Route::get('ads/web', [AdTrackingController::class, 'web'])->middleware('throttl
 Route::post('ads/i', [AdTrackingController::class, 'impressions'])->middleware('throttle:120,1')->name('ads.impressions');
 Route::post('ads/report', [AdTrackingController::class, 'report'])->middleware('throttle:10,1')->name('ads.report');
 
+// In-cab QR cards (P18) and advertisers' conversion tag.
+Route::get('q/{code}', [AdTrackingController::class, 'qr'])->where('code', '[A-Za-z0-9]{6,12}')->middleware('throttle:60,1')->name('ads.qr');
+Route::get('ads/conv/{token}.gif', [AdTrackingController::class, 'conversion'])->where('token', '[A-Za-z0-9]{20,32}')->middleware('throttle:120,1')->name('ads.conversion');
+
 // The Docker image copies the static marketing site into public/, so the root
 // URL serves its homepage. Without it (e.g. local dev) fall back to the legacy
 // authenticated dashboard view.

@@ -298,6 +298,10 @@ Route::group(['prefix' => 'admin', 'middleware' => ['auth', 'TwoFa'], 'as' => 'a
             Route::post('/coupons', 'addCoupon')->name('coupons.add');
             Route::post('/coupons/{coupon}/toggle', 'toggleCoupon')->name('coupons.toggle');
             Route::get('/{campaign}/results.csv', 'export')->whereNumber('campaign')->name('export');
+            Route::get('/{campaign}/qr-cards', 'qrCards')->whereNumber('campaign')->name('qrCards');
+            Route::post('/qr-cards/{card}', 'updateQrCard')->name('qrCards.update');
+            Route::post('/push/{push}/send', 'sendPush')->name('push.send');
+            Route::post('/agencies/{agency}', 'updateAgency')->name('agencies.update');
             Route::get('/{campaign}', 'show')->whereNumber('campaign')->name('show');
             Route::post('/{campaign}/decide', 'decide')->whereNumber('campaign')->name('decide');
             Route::post('/{campaign}/pause', 'pause')->whereNumber('campaign')->name('pause');

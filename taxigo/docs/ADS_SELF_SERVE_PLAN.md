@@ -1,6 +1,6 @@
 # Seema Cabs Goa — Self-Serve Advertising: End-to-End Plan
 
-**Status:** Phases 0, 1 and 2 built (see §21) · **Revision 3** (consolidated;
+**Status:** Phases 0–3 built (see §21); multi-operator not started · **Revision 3** (consolidated;
 replaces revisions 1–2) · **Owners:** Seema Holidays (seller of ad space) and
 OfinIT Solutions Pvt. Ltd. (platform)
 
@@ -553,11 +553,25 @@ screens); day and hour apply everywhere. The P9 sidebar (6:5) and strip
 (8:1) shapes were replaced by one 3:1 banner that works on phones and
 desktops. P10 has no price in §5.2; it starts at ₹49 / ₹149 per day.
 
-**Still open:** phone OTP for the advertiser profile (the logged-in customer
-account is used); NSFW detection and Google Safe Browsing; 1× / 2× image
-variants; frequency cap; Phase 3 items (P18 QR, P11 push, native app
-placements, conversion tracking, agencies). Older Android / iOS builds keep
-the unchanged API and never receive the PWA-only shapes.
+**Phase 3 (built):**
+
+| Item | What | Where |
+|---|---|---|
+| P18 in-cab QR cards | Priced per cab per 30 days (₹499 / ₹1,499); slots = cabs carrying cards (default 20); one card and QR code per cab; scans counted per card; printable A6 sheet with cab assignment and placed / removed dates | `/q/{code}`, Admin → ad → "print & assign cabs" |
+| P11 sponsored push | Per send (₹999 / ₹2,999, not in §5.2 — admin-editable); only customers who opted in ("Offers from Goa businesses", off by default); at most one per person per 7 days; sent on the start date between 10:00 and 20:00; one push a day across advertisers | `AdPushService`, `ads:maintain`, PWA Account toggle, `/api/ads/push-opt-in` |
+| Native apps | Server API and integration guide for the app developers (no app source in this repo) | `docs/ADS_APP_INTEGRATION.md`, `/api/ads`, `/api/ads/impressions`, `/api/ads/report` |
+| Conversion tracking | `sc_click` added to landing URLs; advertiser's 1-pixel tag / JS snippet reports leads and sales with a value; de-duplicated per visitor, label and day; shown in My ads, emails and admin | `/ads/conv/{token}.gif` |
+| Agency accounts | Agency applies in the PWA; admin approves; one login books for several client profiles (each with its own GST details and invoices) | Admin → Advertisers → Agencies |
+
+Monthly (P18) and per-send (P11) placements get no peak pricing, category
+exclusivity or duration discount; the launch offer and coupons still apply.
+
+**Not built:** other TaxiGo operators (multi-operator / multi-tenant —
+needs a platform-wide tenancy change); agency commission (use coupons);
+phone OTP for the advertiser profile; NSFW detection and Google Safe
+Browsing; 1× / 2× image variants; frequency cap for in-app ads. Older
+Android / iOS builds keep the unchanged API and never receive the newer
+shapes.
 
 **Operations:** add the Coolify volume `/var/www/html/storage/app/ads`
 (licences and original images, private) and keep the scheduler running.

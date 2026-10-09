@@ -10,6 +10,8 @@ use App\Models\AdCategory;
 use App\Models\AdCoupon;
 use App\Models\AdCreative;
 use App\Models\AdPlacement;
+use App\Models\AdPushSend;
+use App\Models\AdQrCard;
 use App\Models\AdReview;
 use App\Models\Advertisement;
 use App\Models\AdReport;
@@ -77,6 +79,13 @@ class AdCampaignService
         if ($headline !== null && mb_strlen($headline) > 40) {
             throw new RuntimeException('Keep the one-line message to 40 characters.');
         }
+        $pushBody = trim((string) ($options['push_body'] ?? '')) ?: null;
+        if ($pushBody !== null && mb_strlen($pushBody) > 120) {
+            throw new RuntimeException('Keep the push message to 120 characters.');
+        }
+        if (!$locked && $placements->contains(fn ($p) => $p->billing === AdPlacement::PER_MONTH) && $days % 30 !== 0) {
+            throw new RuntimeException('In-cab QR cards (P18) are booked by the month: choose 30, 60 or 90 days.');
+        }
         $couponCode = strtoupper(trim((string) ($options['coupon_code'] ?? ''))) ?: null;
         if ($couponCode && !$locked) {
             $coupon = AdCoupon::findCode($couponCode);
@@ -85,7 +94,7 @@ class AdCampaignService
             }
         }
 
-        return DB::transaction(function () use ($campaign, $advertiser, $placements, $start, $days, $landingType, $landingValue, $locked, $targeting, $headline, $couponCode, $options) {
+        return DB::transaction(function () use ($campaign, $advertiser, $placements, $start, $days, $landingType, $landingValue, $locked, $targeting, $headline, $pushBody, $couponCode, $options) {
             $campaign = $campaign ?? new AdCampaign(['status' => AdCampaign::DRAFT]);
             $campaign->fill([
                 'advertiser_id' => $advertiser->id,
@@ -93,6 +102,7 @@ class AdCampaignService
                 'landing_type' => $landingType,
                 'landing_url' => trim($landingValue) === '' ? null : self::landingUrl($landingType, $landingValue),
                 'headline' => $headline,
+                'push_body' => $pushBody,
             ]);
             if (!$locked) {
                 $campaign->fill([
@@ -106,7 +116,7 @@ class AdCampaignService
                 ]);
                 $campaign->fill(AdPricing::campaignColumns($this->quoteFor($campaign, $advertiser, $placements)));
             }
-            if ($campaign->renewed_from_id && $campaign->isDirty(['landing_url', 'headline'])) {
+            if ($campaign->renewed_from_id && $campaign->isDirty(['landing_url', 'headline', 'push_body'])) {
                 $campaign->auto_approve = false;
             }
             $campaign->save();
@@ -146,9 +156,11 @@ class AdCampaignService
     {
         $units = [];
         foreach ($placements as $placement) {
-            $units[$placement->id] = (int) $placement->screen_id === AdServer::SCREEN_WEBSITE
-                ? max(1, count($targeting['page_groups'] ?? []))
-                : 1;
+            $units[$placement->id] = match (true) {
+                (int) $placement->screen_id === AdServer::SCREEN_WEBSITE => max(1, count($targeting['page_groups'] ?? [])),
+                $placement->billing === AdPlacement::PER_MONTH => max(1, (int) ($targeting['cabs'] ?? 1)),
+                default => 1,
+            };
         }
 
         return $units;
@@ -256,6 +268,9 @@ class AdCampaignService
         if (in_array(AdServer::SCREEN_WEBSITE, $screens, true) && empty($campaign->targeting['page_groups'])) {
             $problems[] = 'Choose at least one website page group (P9).';
         }
+        if (in_array(AdServer::SCREEN_PUSH, $screens, true) && (blank($campaign->headline) || blank($campaign->push_body))) {
+            $problems[] = 'Add the push title and message (P11).';
+        }
         $category = $advertiser->category;
         if ($category && $category->licence_required && !$advertiser->hasLicenceValidUntil(optional($campaign->end_date)->toDateString())) {
             $problems[] = "Upload your {$category->licence_label}, valid until the end date of the ad.";
@@ -281,7 +296,7 @@ class AdCampaignService
             // Lock the placements so two advertisers can't take the last slot together.
             $placements = AdPlacement::whereIn('id', $campaign->items->pluck('placement_id'))->lockForUpdate()->get();
             [$from, $to] = [$campaign->start_date->toDateString(), $campaign->end_date->toDateString()];
-            $conflicts = AdAvailability::conflicts($placements, $from, $to, $campaign->id, (array) ($campaign->targeting['page_groups'] ?? []));
+            $conflicts = AdAvailability::conflicts($placements, $from, $to, $campaign->id, (array) ($campaign->targeting['page_groups'] ?? []), self::unitsFor($placements, $campaign->targeting));
             if ($conflicts) {
                 $list = collect($conflicts)->map(fn ($date, $code) => $code . ' (from ' . Carbon::parse($date)->format('d M') . ')')->implode(', ');
                 throw new RuntimeException("Sold out: {$list}. Choose other dates or placements.");
@@ -521,6 +536,8 @@ class AdCampaignService
             throw new RuntimeException('This ad cannot be cancelled.');
         }
         $campaign->forceFill(['status' => AdCampaign::CANCELLED, 'review_note' => $note, 'reviewed_at' => now(), 'reviewed_by' => $adminId])->save();
+        $campaign->pushSends()->where('status', AdPushSend::SCHEDULED)->update(['status' => AdPushSend::CANCELLED]);
+        $campaign->qrCards()->whereNull('removed_on')->update(['removed_on' => now('Asia/Kolkata')->toDateString()]);
         $this->setServing($campaign, Advertisement::REJECTED, $adminId, 'Campaign cancelled');
         $this->log($campaign, $adminId, 'first', 'cancel', [], [], $note);
         $refunded = $refund > 0 ? $this->refundAndCredit($campaign, $refund, 'Ad cancelled') : 0;
@@ -628,6 +645,23 @@ class AdCampaignService
                 $item->forceFill(['advertisement_id' => $ad->id])->save();
             }
         }
+        $this->prepareOffline($campaign);
+    }
+
+    /** P18: one card (own QR code) per booked cab. P11: schedule the push. */
+    private function prepareOffline(AdCampaign $campaign): void
+    {
+        foreach ($campaign->items as $item) {
+            if ($item->placement->billing === AdPlacement::PER_MONTH) {
+                for ($n = $campaign->qrCards()->count(); $n < (int) $item->units; $n++) {
+                    AdQrCard::create(['campaign_id' => $campaign->id, 'code' => AdQrCard::newCode()]);
+                }
+            }
+            if ((int) $item->placement->screen_id === AdServer::SCREEN_PUSH && !$campaign->pushSends()->exists()) {
+                $sendOn = $campaign->start_date->lt(now('Asia/Kolkata')->startOfDay()) ? now('Asia/Kolkata')->toDateString() : $campaign->start_date->toDateString();
+                AdPushSend::create(['campaign_id' => $campaign->id, 'send_on' => $sendOn]);
+            }
+        }
     }
 
     private function setServing(AdCampaign $campaign, string $status, ?int $adminId, ?string $note): void
@@ -665,6 +699,7 @@ class AdCampaignService
         $new = $this->saveDraft(null, $old->advertiser, $old->items->pluck('placement_id')->all(), $start->toDateString(), $days, $type, $value, [
             'targeting' => (array) $old->targeting,
             'headline' => $old->headline,
+            'push_body' => $old->push_body,
             'exclusive_category' => (bool) $old->exclusive_category,
         ]);
         foreach ($old->creatives as $creative) {
@@ -693,6 +728,7 @@ class AdCampaignService
 
         $licences = $this->checkLicences();
         $links = $this->checkLinks();
+        $pushes = app(AdPushService::class)->sendDue();
 
         $reminded = 0;
         AdCampaign::where('status', AdCampaign::APPROVED)->whereNull('reminder_sent_at')
@@ -718,7 +754,7 @@ class AdCampaignService
         $stale = AdCampaign::whereIn('status', [AdCampaign::DRAFT, AdCampaign::PENDING_PAYMENT])->whereNull('paid_at')
             ->where('updated_at', '<', now()->subDays(14))->update(['status' => AdCampaign::CANCELLED, 'hold_expires_at' => null]);
 
-        return compact('expired', 'reminded', 'recovered', 'stale', 'licences', 'links');
+        return compact('expired', 'reminded', 'recovered', 'stale', 'licences', 'links', 'pushes');
     }
 
     /**

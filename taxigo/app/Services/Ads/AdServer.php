@@ -35,8 +35,12 @@ class AdServer
     public const SCREEN_APP_OPEN = 14;
     public const SCREEN_WEBSITE = 15;
     public const SCREEN_EMAIL = 16;
+    // Phase 3 (not shown in apps or pages: printed cards and push messages).
+    public const SCREEN_QR = 17;
+    public const SCREEN_PUSH = 18;
     public const PWA_ONLY_SCREENS = [self::SCREEN_HOME_INLINE, self::SCREEN_FINDING_LARGE, self::SCREEN_FINDING_FULL,
-        self::SCREEN_AIRPORT_ARRIVALS, self::SCREEN_SIGHTSEEING_STOP, self::SCREEN_APP_OPEN, self::SCREEN_WEBSITE, self::SCREEN_EMAIL];
+        self::SCREEN_AIRPORT_ARRIVALS, self::SCREEN_SIGHTSEEING_STOP, self::SCREEN_APP_OPEN, self::SCREEN_WEBSITE, self::SCREEN_EMAIL,
+        self::SCREEN_QR, self::SCREEN_PUSH];
 
     /** Approved, paid ads whose date + time window contains now (IST). */
     public static function live(): Builder
@@ -69,7 +73,7 @@ class AdServer
         if ($ads->isNotEmpty()) {
             return $ads;
         }
-        if (in_array($screen, [self::SCREEN_SIGHTSEEING_STOP, self::SCREEN_WEBSITE, self::SCREEN_APP_OPEN, self::SCREEN_EMAIL], true)) {
+        if (in_array($screen, [self::SCREEN_SIGHTSEEING_STOP, self::SCREEN_WEBSITE, self::SCREEN_APP_OPEN, self::SCREEN_EMAIL, self::SCREEN_QR, self::SCREEN_PUSH], true)) {
             return collect();
         }
 
@@ -116,10 +120,12 @@ class AdServer
      * The advertiser's landing URL with tracking added:
      *  - web links get utm_source/medium/campaign/content (existing tags kept),
      *  - WhatsApp links get a prefilled "I saw your ad" message,
-     *  - tel: / mailto: are returned unchanged.
+     *  - tel: / mailto: are returned unchanged,
+     *  - web links also get `sc_click` (the click id) so the advertiser's
+     *    conversion tag can report leads / sales back to us.
      * Returns null for anything that isn't a safe, absolute link.
      */
-    public static function landingUrl(Advertisement $ad, ?int $screen, string $platform): ?string
+    public static function landingUrl(Advertisement $ad, ?int $screen, string $platform, ?int $clickId = null): ?string
     {
         $url = trim((string) $ad->banner_url);
         if ($url === '') {
@@ -148,6 +154,9 @@ class AdServer
                 'utm_campaign' => 'ad-' . $ad->id,
                 'utm_content' => $screen ? 'screen-' . $screen : 'advertise-page',
             ];
+            if ($clickId) {
+                $query['sc_click'] = $clickId;
+            }
         }
 
         return $parts['scheme'] . '://'

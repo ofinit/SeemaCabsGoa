@@ -48,9 +48,19 @@ class AdvertisementController extends ResponseController
 
             if ($request->filled('screen')) {
                 $screen = (int) $request->screen;
-                $ads = AdServer::targeted(AdServer::onScreen($query, $screen)->orderByDesc('id')->get());
-                if ($ads->isEmpty()) {
-                    $ads = AdServer::forScreen($screen);
+                // Optional targeting context from the app: area (north/south), trip, package_id.
+                $context = array_filter([
+                    'area' => in_array($request->area, ['north', 'south'], true) ? $request->area : null,
+                    'trip' => array_key_exists((string) $request->trip, \App\Services\Ads\AdTargeting::TRIPS) ? $request->trip : null,
+                    'package_id' => $request->filled('package_id') ? (int) $request->package_id : null,
+                ]);
+                if (in_array($screen, [AdServer::SCREEN_QR, AdServer::SCREEN_PUSH, AdServer::SCREEN_WEBSITE, AdServer::SCREEN_EMAIL], true)) {
+                    $ads = collect();
+                } else {
+                    $ads = AdServer::targeted(AdServer::onScreen($query, $screen)->orderByDesc('id')->get(), $context);
+                    if ($ads->isEmpty()) {
+                        $ads = AdServer::forScreen($screen, 5, $context);
+                    }
                 }
 
                 return $this->success([
@@ -94,13 +104,20 @@ class AdvertisementController extends ResponseController
         }
     }
 
-    /** Resource rows plus a tracked click link and the "Sponsored" flag. */
+    /** Resource rows plus a tracked click link, the "Sponsored" flag, image size and (P16) message. */
     private function rows($ads, ?int $screen, string $platform): array
     {
-        return $ads->values()->map(function (Advertisement $ad) use ($screen, $platform) {
+        $placement = $screen ? \App\Models\AdPlacement::where('screen_id', $screen)->first() : null;
+        $headlines = \App\Models\AdCampaign::whereIn('id', $ads->pluck('ad_campaign_id')->filter())->pluck('headline', 'id');
+
+        return $ads->values()->map(function (Advertisement $ad) use ($screen, $platform, $placement, $headlines) {
             $row = (new AdvertisementListResource($ad))->resolve();
             $row['click_url'] = AdServer::clickUrl($ad, $screen, $platform);
             $row['sponsored'] = true;
+            $row['screen'] = $screen;
+            $row['width'] = $placement?->width;
+            $row['height'] = $placement?->height;
+            $row['headline'] = $ad->ad_campaign_id ? ($headlines[$ad->ad_campaign_id] ?? null) : null;
 
             return $row;
         })->all();

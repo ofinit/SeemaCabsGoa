@@ -82,6 +82,7 @@
                         @endforeach
                     </div>
                     <hr>
+                    @if ($campaign->push_body)<p class="mb-1"><strong>Push:</strong> Sponsored · {{ $campaign->headline }} — {{ $campaign->push_body }}</p>@endif
                     <p class="mb-1"><strong>Audience:</strong> {{ \App\Services\Ads\AdTargeting::describe($campaign->targeting) }}</p>
                     @if ($campaign->headline)<p class="mb-1"><strong>App-open message:</strong> {{ $campaign->headline }}</p>@endif
                     @if ($campaign->exclusive_category)<p class="mb-1"><strong>Category exclusivity</strong> booked.</p>@endif
@@ -183,6 +184,7 @@
                 <div class="card-header"><h5 class="mb-0">Advertiser</h5></div>
                 <div class="card-body small">
                     <p class="mb-1"><strong>{{ $advertiser->business_name }}</strong> @if ($advertiser->isBlocked())<span class="badge bg-danger">Blocked</span>@endif</p>
+                    @if ($advertiser->agency)<p class="mb-1">Booked by agency: <strong>{{ $advertiser->agency->name }}</strong></p>@endif
                     <p class="mb-1">{{ $category->name ?? '—' }} · <strong>{{ ucfirst($category->tier ?? 'standard') }}</strong> tier (booked as {{ $campaign->tier }})</p>
                     @if ($category && $category->rules)<p class="mb-1 text-muted">{{ $category->rules }}</p>@endif
                     <p class="mb-1">{{ $advertiser->contact_name }} · {{ $advertiser->phone }} · {{ $advertiser->email }}</p>
@@ -268,6 +270,20 @@
                         <p class="mb-1">{{ number_format($stats['views']) }} views · {{ number_format($stats['clicks']) }} taps · tap rate {{ $stats['ctr'] === null ? '—' : $stats['ctr'] . '%' }}</p>
                         @foreach ($stats['placements'] as $code => $row)
                             <div>{{ $code }}: {{ number_format($row['views'] ?? 0) }} views, {{ number_format($row['clicks'] ?? 0) }} taps</div>
+                        @endforeach
+                        @if ($stats['conversions'])<div>Conversions: {{ $stats['conversions'] }} · {{ AdCampaign::rupees($stats['conversion_value']) }}</div>@endif
+                        @if ($campaign->qrCards->isNotEmpty())
+                            <div class="mt-2">QR cards: {{ $stats['qr']['placed'] }} / {{ $stats['qr']['cards'] }} placed · {{ $stats['qr']['scans'] }} scans ·
+                                <a href="{{ route('admin.advertisements.selfServe.qrCards', $campaign) }}" target="_blank">print &amp; assign cabs</a></div>
+                        @endif
+                        @foreach ($campaign->pushSends as $push)
+                            <div class="mt-2">Push on {{ $push->send_on->format('d-m-Y') }}: <strong>{{ $push->status }}</strong>
+                                @if ($push->sent_at) · {{ $push->recipients }} customers, {{ $push->delivered }} delivered @endif
+                                @if ($push->error)<span class="text-danger">· {{ $push->error }}</span>@endif
+                                @if ($push->status === 'scheduled' && $campaign->status === AdCampaign::APPROVED)
+                                    <form method="POST" action="{{ route('admin.advertisements.selfServe.push.send', $push) }}" class="d-inline" onsubmit="return confirm('Send this push now to opted-in customers?')">@csrf<button class="btn btn-sm btn-link p-0">Send now</button></form>
+                                @endif
+                            </div>
                         @endforeach
                     </div>
                 </div>

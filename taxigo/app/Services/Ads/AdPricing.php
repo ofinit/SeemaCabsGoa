@@ -16,6 +16,8 @@ use Illuminate\Support\Collection;
  * Ad price maths (plan §2, §5), in integer paise, in this order:
  *
  *   1. per placement: price/day for the tier × each day's peak multiplier × units
+ *      (P18 is per cab per 30 days and P11 per send: no peak, exclusivity or
+ *      duration discount on those)
  *   2. − bundle saving (placements sold together at a bundle price)
  *   3. + category exclusivity add-on (% of 1–2)
  *   4. − duration discount (14+ / 30+ days)
@@ -41,14 +43,26 @@ class AdPricing
         // 1. Placements, with peak pricing.
         $items = [];
         $plain = 0;
+        $fixed = 0;
         foreach ($placements as $p) {
             $n = max(1, (int) ($units[$p->id] ?? 1));
-            $perDay = $p->priceFor($tier);
-            $subtotal = (int) round($perDay * $factorSum) * $n;
-            $plain += $perDay * $days * $n;
+            $price = $p->priceFor($tier);
+            $billing = $p->billing ?? AdPlacement::PER_DAY;
+            if ($billing === AdPlacement::PER_MONTH) {
+                $subtotal = $price * self::months($days) * $n;
+                $fixed += $subtotal;
+                $plain += $subtotal;
+            } elseif ($billing === AdPlacement::PER_SEND) {
+                $subtotal = $price * $n;
+                $fixed += $subtotal;
+                $plain += $subtotal;
+            } else {
+                $subtotal = (int) round($price * $factorSum) * $n;
+                $plain += $price * $days * $n;
+            }
             $items[] = [
-                'placement_id' => $p->id, 'code' => $p->code, 'name' => $p->name,
-                'price_per_day' => $perDay, 'days' => $days, 'units' => $n, 'subtotal' => $subtotal,
+                'placement_id' => $p->id, 'code' => $p->code, 'name' => $p->name, 'billing' => $billing,
+                'price_per_day' => $price, 'days' => $days, 'units' => $n, 'subtotal' => $subtotal,
             ];
         }
         $list = array_sum(array_column($items, 'subtotal'));
@@ -56,7 +70,7 @@ class AdPricing
         // 2. Bundles: biggest first, each placement used once, only when cheaper.
         $bundleDiscount = 0;
         $bundles = [];
-        $byCode = collect($items)->filter(fn ($i) => $i['units'] === 1)->keyBy('code');
+        $byCode = collect($items)->filter(fn ($i) => $i['units'] === 1 && $i['billing'] === AdPlacement::PER_DAY)->keyBy('code');
         foreach (AdBundle::where('active', true)->get()->sortByDesc(fn ($b) => count($b->placement_codes)) as $bundle) {
             $codes = $bundle->placement_codes;
             if (array_diff($codes, $byCode->keys()->all())) {
@@ -71,16 +85,16 @@ class AdPricing
             }
         }
 
-        // 3. Category exclusivity add-on.
-        $afterBundle = $list - $bundleDiscount;
+        // 3. Category exclusivity add-on (daily placements).
+        $afterBundle = $list - $fixed - $bundleDiscount;
         $exclusive = !empty($options['exclusive_category']);
         $exclusivity = $exclusive ? (int) round($afterBundle * (float) $settings[AdSettings::EXCLUSIVITY_PERCENT] / 100) : 0;
         $base = $afterBundle + $exclusivity;
 
-        // 4. Duration discount.
+        // 4. Duration discount (daily placements).
         $discountPercent = self::discountPercent($days, $settings);
         $discount = (int) round($base * $discountPercent / 100);
-        $afterDuration = $base - $discount;
+        $afterDuration = $base - $discount + $fixed;
 
         // 5. Launch offer or coupon (the larger one).
         $launchPercent = !empty($options['first_booking']) ? AdSettings::launchPercent($settings) : 0.0;
@@ -134,6 +148,12 @@ class AdPricing
             'ofinit_gst' => $ofinitGst,
             'ofinit_total' => $ofinit + $ofinitGst,
         ];
+    }
+
+    /** Months billed for monthly placements (P18): 30 days = 1 month. */
+    public static function months(int $days): int
+    {
+        return max(1, (int) ceil($days / 30));
     }
 
     /** Price multiplier for each day (peak windows; the highest applies). */

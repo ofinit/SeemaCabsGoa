@@ -229,4 +229,27 @@ class NotificationService
 
         return true;
     }
+
+    /**
+     * Sponsored push (P11): a multicast with an image to opted-in customers.
+     * Not stored in anyone's notification list.
+     *
+     * @return array{success: int, failure: int}
+     */
+    public function sendAdPush(array $tokens, string $title, string $body, ?string $imageUrl, array $data = []): array
+    {
+        $message = CloudMessage::new()
+            ->withNotification(Notification::create($title, $body, $imageUrl))
+            ->withData(array_map('strval', $this->cleanseArray($data)));
+
+        $success = 0;
+        $failure = 0;
+        foreach (array_chunk(array_values(array_unique($tokens)), 500) as $chunk) {
+            $report = $this->messaging->sendMulticast($message, array_map(fn ($t) => RegistrationToken::fromValue($t), $chunk));
+            $success += $report->successes()->count();
+            $failure += $report->failures()->count();
+        }
+
+        return ['success' => $success, 'failure' => $failure];
+    }
 }

@@ -6,18 +6,23 @@ use App\Enums\Type;
 use App\Http\Controllers\Controller;
 use App\Models\AdAdvertiser;
 use App\Models\AdCampaign;
+use App\Models\AdAgency;
 use App\Models\AdBundle;
 use App\Models\AdCategory;
 use App\Models\AdCoupon;
 use App\Models\AdLicence;
 use App\Models\AdPlacement;
 use App\Models\AdPricingRule;
+use App\Models\AdPushSend;
+use App\Models\AdQrCard;
+use App\Models\Cab;
 use App\Models\AdReport;
 use App\Models\Advertisement;
 use App\Models\SettingChange;
 use App\Services\Ads\AdAvailability;
 use App\Services\Ads\AdCampaignService;
 use App\Services\Ads\AdPaymentService;
+use App\Services\Ads\AdPushService;
 use App\Services\Ads\AdReporting;
 use App\Services\Ads\AdSettings;
 use Carbon\Carbon;
@@ -110,7 +115,7 @@ class AdCampaignController extends Controller
     public function show(AdCampaign $campaign)
     {
         $this->authorizeAdmin();
-        $campaign->load('advertiser.category', 'advertiser.licences', 'advertiser.user', 'items.placement', 'items.advertisement', 'creatives', 'reviews.reviewer', 'invoices', 'reports');
+        $campaign->load('advertiser.category', 'advertiser.licences', 'advertiser.user', 'advertiser.agency', 'items.placement', 'items.advertisement', 'creatives', 'reviews.reviewer', 'invoices', 'reports', 'qrCards', 'pushSends');
         $placements = $campaign->items->pluck('placement');
         $conflicts = $campaign->start_date
             ? AdAvailability::conflicts($placements, $campaign->start_date->toDateString(), $campaign->end_date->toDateString(), $campaign->id)
@@ -145,6 +150,62 @@ class AdCampaignController extends Controller
             : now('Asia/Kolkata')->startOfMonth();
 
         return view('advertisements.self-serve.dashboard', ['month' => $month] + app(AdReporting::class)->dashboard($month));
+    }
+
+    // --------------------------------------------------------- QR cards (P18)
+
+    /** Printable A6 cards (one per cab) with cab assignment. */
+    public function qrCards(AdCampaign $campaign)
+    {
+        $this->authorizeAdmin();
+        $campaign->load('qrCards.cab', 'creatives', 'advertiser', 'items.placement');
+        $p18 = $campaign->items->first(fn ($i) => $i->placement->billing === AdPlacement::PER_MONTH);
+        abort_unless($p18, 404);
+
+        return view('advertisements.self-serve.qr-cards', [
+            'campaign' => $campaign,
+            'creative' => $campaign->creatives->firstWhere('shape', $p18->placement->shapeKey()),
+            'cabs' => Cab::orderBy('number')->get(['id', 'number']),
+        ]);
+    }
+
+    public function updateQrCard(Request $request, AdQrCard $card)
+    {
+        $this->authorizeAdmin();
+        $data = $request->validate([
+            'cab_id' => 'nullable|integer|exists:cabs,id',
+            'placed_on' => 'nullable|date',
+            'removed_on' => 'nullable|date',
+        ]);
+        $card->fill($data)->save();
+
+        return back()->with('success', "Card {$card->code} updated.");
+    }
+
+    // --------------------------------------------------- sponsored push (P11)
+
+    public function sendPush(AdPushSend $push, AdPushService $pushes)
+    {
+        $this->authorizeAdmin();
+        if ($push->status !== AdPushSend::SCHEDULED || $push->campaign?->status !== AdCampaign::APPROVED) {
+            return back()->with('error', 'Only scheduled pushes of approved ads can be sent.');
+        }
+        $ok = $pushes->send($push);
+        $push->refresh();
+
+        return back()->with($ok ? 'success' : 'error', $ok ? "Push sent to {$push->recipients} customers ({$push->delivered} delivered)." : 'Push failed: ' . $push->error);
+    }
+
+    // --------------------------------------------------------------- agencies
+
+    public function updateAgency(Request $request, AdAgency $agency)
+    {
+        $this->authorizeAdmin();
+        $data = $request->validate(['status' => 'required|in:pending,approved,blocked', 'status_note' => 'nullable|string|max:255']);
+        SettingChange::record("ad_agency.{$agency->id}.status", $agency->status, $data['status']);
+        $agency->fill($data)->save();
+
+        return back()->with('success', "Agency {$agency->name} is now {$agency->status}.");
     }
 
     // ----------------------------------------------------------------- reports
@@ -502,6 +563,7 @@ class AdCampaignController extends Controller
         return view('advertisements.self-serve.advertisers', [
             'advertisers' => $query->paginate(30)->withQueryString(),
             'categories' => AdCategory::orderBy('sort')->get(),
+            'agencies' => AdAgency::with('user')->withCount('clients')->orderByRaw("FIELD(status, 'pending', 'approved', 'blocked')")->latest('id')->get(),
         ]);
     }
 

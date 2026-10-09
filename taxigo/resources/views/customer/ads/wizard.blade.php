@@ -33,6 +33,20 @@
 
         <div x-show="error" x-transition class="rounded-2xl bg-red-50 border border-red-200 text-danger text-sm px-4 py-3" x-text="error"></div>
 
+        <template x-if="agency && !campaign">
+            <div class="card space-y-2">
+                <p class="field-label">Agency: <span x-text="agency.name"></span> — booking for</p>
+                <div class="flex gap-2">
+                    <select class="field-input !py-2.5" @change="switchClient($event.target.value)">
+                        <template x-for="c in agency.clients" :key="c.id">
+                            <option :value="c.id" :selected="c.id == agency.current && !newClient" x-text="c.business_name"></option>
+                        </template>
+                        <option value="new" :selected="newClient">+ New client</option>
+                    </select>
+                </div>
+            </div>
+        </template>
+
         {{-- STEP: Business --}}
         <section x-show="step === 'business'" class="space-y-3">
             <div class="card space-y-3">
@@ -106,7 +120,7 @@
                         <p class="font-semibold text-ink text-sm"><span x-text="p.code"></span> · <span x-text="p.name"></span>
                             <span x-show="p.exclusive" class="ml-1 text-[10px] uppercase font-bold text-orange-700">Exclusive</span></p>
                         <p class="text-xs text-muted mt-0.5" x-text="p.description"></p>
-                        <p class="text-sm font-bold text-ink mt-1" x-text="money(price(p)) + ' / day'"></p>
+                        <p class="text-sm font-bold text-ink mt-1" x-text="money(price(p)) + ' / ' + (p.unit || 'day')"></p>
                     </div>
                     <div class="w-6 h-6 rounded-full border-2 shrink-0 flex items-center justify-center"
                          :class="selected.includes(p.id) ? 'bg-gold border-gold' : 'border-black/20'">
@@ -121,6 +135,13 @@
                         <option value="">Choose a package</option>
                         <template x-for="pk in packages" :key="pk.id"><option :value="pk.id" x-text="pk.title" :selected="pk.id == packageId"></option></template>
                     </select>
+                </div>
+            </template>
+            <template x-if="hasCode('P18')">
+                <div class="card space-y-2">
+                    <label class="field-label">P18 — how many cabs should carry your QR card?</label>
+                    <input type="number" class="field-input" min="1" max="200" x-model.number="cabs" :disabled="locked" @change="loadAvailability(); refreshQuote()">
+                    <p class="text-xs text-muted">Booked by the month (30, 60 or 90 days). We print the cards and place them in the cabs.</p>
                 </div>
             </template>
             <template x-if="hasCode('P9')">
@@ -148,7 +169,7 @@
                     <label class="field-label">Number of days (minimum <span x-text="rules.min_days"></span>)</label>
                     <input type="number" class="field-input" x-model.number="days" :min="rules.min_days" :max="rules.max_days" :disabled="locked" @change="refreshQuote()">
                     <div class="flex gap-2 mt-2" x-show="!locked">
-                        <template x-for="d in [7, 14, 30]" :key="d">
+                        <template x-for="d in (hasCode('P18') ? [30, 60, 90] : [7, 14, 30])" :key="d">
                             <button type="button" class="btn-outline !px-4 !py-2 text-sm" :class="days === d && 'ring-2 ring-gold'" @click="days = d; refreshQuote()"
                                     x-text="d + ' days' + (d >= 30 ? ' −' + rules.discount_30 + '%' : d >= 14 ? ' −' + rules.discount_14 + '%' : '')"></button>
                         </template>
@@ -173,7 +194,8 @@
 
             <div class="card" x-show="quote">@include('customer.ads.partials.quote')</div>
 
-            <button type="button" class="btn-primary w-full" @click="saveDraftAndNext()" :disabled="busy || conflicts.length || days < rules.min_days || !startDate">Continue</button>
+            <p class="text-xs text-danger" x-show="hasCode('P18') && days % 30 !== 0">QR cards are booked by the month: choose 30, 60 or 90 days.</p>
+            <button type="button" class="btn-primary w-full" @click="saveDraftAndNext()" :disabled="busy || conflicts.length || days < rules.min_days || !startDate || (hasCode('P18') && days % 30 !== 0)">Continue</button>
         </section>
 
         {{-- STEP: Targeting --}}
@@ -263,6 +285,15 @@
                 </div>
             </div>
 
+            <template x-if="hasCode('P11')">
+                <div class="card space-y-2">
+                    <p class="field-label">Sponsored push (P11)</p>
+                    <input class="field-input" x-model="headline" maxlength="40" placeholder="Title, e.g. 20% off at Club X tonight">
+                    <textarea class="field-input rounded-2xl" rows="2" x-model="pushBody" maxlength="120" placeholder="Message (up to 120 characters)"></textarea>
+                    <p class="text-xs text-muted">Sent once on the start date, between 10 am and 8 pm, to customers who chose to get offers
+                        (about <span x-text="pushAudience"></span> today; each person gets at most one sponsored push a week). Shown as "Sponsored · your title".</p>
+                </div>
+            </template>
             <template x-if="hasCode('P16')">
                 <div class="card space-y-2">
                     <label class="field-label">App-open message (P16, up to 40 characters)</label>
@@ -283,7 +314,7 @@
                 <p class="text-xs text-muted" x-show="landingType === 'whatsapp'">Opens WhatsApp with "Hi, I saw your ad on Seema Cabs Goa".</p>
             </div>
 
-            <button type="button" class="btn-primary w-full" @click="saveDraftAndNext()" :disabled="busy || !allCreatives || !landingValue || (hasCode('P16') && !headline)">Continue</button>
+            <button type="button" class="btn-primary w-full" @click="saveDraftAndNext()" :disabled="busy || !allCreatives || !landingValue || ((hasCode('P16') || hasCode('P11')) && !headline) || (hasCode('P11') && !pushBody)">Continue</button>
         </section>
 
         {{-- STEP: Checklist --}}
@@ -384,6 +415,10 @@ function adWizard() {
         ],
         target: { areas: [], trips: [], days: [], from: '', to: '' },
         packageId: '', pageGroups: [], headline: '', exclusive: false, couponCode: '', couponError: '',
+        cabs: 1, pushBody: '',
+        agency: @js($agency),
+        newClient: @js(request()->boolean('new_client')),
+        pushAudience: @js($pushAudience),
         step: 'business',
         today,
         selected: [], startDate: '', days: 7,
@@ -416,6 +451,8 @@ function adWizard() {
                 this.packageId = t.package_id || '';
                 this.pageGroups = t.page_groups || [];
                 this.headline = this.campaign.headline || '';
+                this.pushBody = this.campaign.push_body || '';
+                this.cabs = t.cabs || 1;
                 this.exclusive = !!this.campaign.exclusive_category;
                 this.couponCode = this.campaign.coupon_code || '';
             }
@@ -452,7 +489,15 @@ function adWizard() {
                 hours: (this.target.from && this.target.to) ? { from: this.target.from, to: this.target.to } : null,
                 package_id: this.hasCode('P14') ? this.packageId : null,
                 page_groups: this.hasCode('P9') ? this.pageGroups : [],
+                cabs: this.hasCode('P18') ? this.cabs : null,
             };
+        },
+        async switchClient(id) {
+            if (id === 'new') { window.location.href = @js(route('customer.ads.create')) + '?new_client=1'; return; }
+            try {
+                await apiFetch(@js(route('customer.actions.ads.client')), { method: 'POST', body: { id: Number(id) } });
+                window.location.href = @js(route('customer.ads.create'));
+            } catch (e) { this.error = e.message; }
         },
         get allTicked() { return @js(array_keys($checklist)).every(k => this.ticks[k]); },
         get conflicts() {
@@ -491,6 +536,7 @@ function adWizard() {
         next() {
             this.error = '';
             const i = this.stepIndex;
+            if (this.step === 'placements' && this.hasCode('P18') && this.days % 30 !== 0) { this.days = 30; }
             if (this.step === 'placements') { this.loadAvailability(); this.refreshQuote(); }
             if (this.step === 'dates' && this.locked) { /* paid: dates fixed */ }
             this.step = this.steps[Math.min(i + 1, this.steps.length - 1)].key;
@@ -507,10 +553,12 @@ function adWizard() {
                 const body = { ...this.profile };
                 if (!this.wantsGst) { body.gstin = ''; body.legal_name = ''; body.billing_address = ''; }
                 delete body.licences; delete body.tier;
+                if (this.newClient) body.new_client = 1;
                 const res = await apiFetch(routes.profile, { method: 'POST', body });
                 this.profile = res.data;
-                const firstTime = !this.hasProfile;
+                const firstTime = !this.hasProfile || this.newClient;
                 this.hasProfile = true;
+                this.newClient = false;
                 if (firstTime && this.category && this.category.licence_required) { this.busy = false; return; }
                 this.step = this.locked ? 'creative' : 'placements';
                 window.scrollTo(0, 0);
@@ -534,7 +582,8 @@ function adWizard() {
         async loadAvailability() {
             if (!this.selected.length) return;
             const q = this.selected.map(id => 'placements[]=' + id).join('&') + (this.campaign ? '&campaign=' + this.campaign.id : '')
-                + (this.hasCode('P9') ? this.pageGroups.map(g => '&page_groups[]=' + encodeURIComponent(g)).join('') : '');
+                + (this.hasCode('P9') ? this.pageGroups.map(g => '&page_groups[]=' + encodeURIComponent(g)).join('') : '')
+                + (this.hasCode('P18') ? '&cabs=' + this.cabs : '');
             try { const res = await apiFetch(routes.availability + '?' + q); this.soldOut = res.data || {}; } catch (e) { /* non-critical */ }
         },
         async refreshQuote() {
@@ -542,7 +591,7 @@ function adWizard() {
             try {
                 const res = await apiFetch(routes.quote, { method: 'POST', body: {
                     placements: this.selected, days: this.days, start_date: this.startDate,
-                    page_groups: this.hasCode('P9') ? this.pageGroups : [], exclusive_category: this.exclusive,
+                    page_groups: this.hasCode('P9') ? this.pageGroups : [], exclusive_category: this.exclusive, cabs: this.hasCode('P18') ? this.cabs : 1,
                     coupon_code: this.couponCode || null, campaign: this.campaign ? this.campaign.id : null,
                 } });
                 this.quote = res.data;
@@ -552,7 +601,7 @@ function adWizard() {
         async saveDraft() {
             const body = {
                 placements: this.selected, start_date: this.startDate, days: this.days, landing_type: this.landingType, landing_value: this.landingValue,
-                targeting: this.targetingPayload(), headline: this.headline, exclusive_category: this.exclusive, coupon_code: this.couponError ? null : (this.couponCode || null),
+                targeting: this.targetingPayload(), headline: this.headline, push_body: this.pushBody, exclusive_category: this.exclusive, coupon_code: this.couponError ? null : (this.couponCode || null),
             };
             const url = this.campaign ? routes.base + '/' + this.campaign.id : routes.store;
             const res = await apiFetch(url, { method: 'POST', body });

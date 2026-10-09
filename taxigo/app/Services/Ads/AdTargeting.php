@@ -79,6 +79,10 @@ class AdTargeting
         if ($groups) {
             $out['page_groups'] = $groups;
         }
+        // P18: number of cabs carrying the card (not a viewer filter).
+        if (!empty($input['cabs'])) {
+            $out['cabs'] = max(1, min(200, (int) $input['cabs']));
+        }
 
         return $out ?: null;
     }
@@ -192,6 +196,9 @@ class AdTargeting
         }
         if (!empty($targeting['package_id'])) {
             $parts[] = 'Package #' . $targeting['package_id'];
+        }
+        if (!empty($targeting['cabs'])) {
+            $parts[] = $targeting['cabs'] . ' cab(s) with QR cards';
         }
 
         return implode(' · ', $parts) ?: 'Everyone';

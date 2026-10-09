@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Advertisement;
 use App\Models\AdvertisementImpression;
+use App\Models\AdCampaign;
+use App\Models\AdConversion;
+use App\Models\AdQrCard;
 use App\Models\AdReport;
 use App\Models\AdvertisementUserClick;
 use App\Services\Ads\AdCampaignService;
@@ -18,7 +21,7 @@ use Illuminate\Support\Facades\DB;
  */
 class AdTrackingController extends Controller
 {
-    private const PLATFORMS = ['pwa', 'android', 'ios', 'website', 'email', 'qr', 'app'];
+    private const PLATFORMS = ['pwa', 'android', 'ios', 'website', 'email', 'qr', 'push', 'app'];
 
     /** GET /ads/c/{advertisement} (signed): count the click, then forward with UTM tags. */
     public function click(Request $request, Advertisement $advertisement)
@@ -26,19 +29,93 @@ class AdTrackingController extends Controller
         $platform = in_array($request->query('p'), self::PLATFORMS, true) ? $request->query('p') : 'pwa';
         $screen = $request->filled('s') ? (int) $request->query('s') : null;
 
-        $target = AdServer::landingUrl($advertisement, $screen, $platform);
-        if (!$target) {
+        if (!AdServer::landingUrl($advertisement, $screen, $platform)) {
             abort(404);
         }
 
-        AdvertisementUserClick::create([
+        $click = AdvertisementUserClick::create([
             'advertisement_id' => $advertisement->id,
             'user_id' => auth('customer')->id() ?? auth()->id(),
             'screen_id' => $screen,
             'platform' => $platform,
         ]);
+        $target = AdServer::landingUrl($advertisement, $screen, $platform, $click->id);
 
         return redirect()->away($target, 302, ['Cache-Control' => 'no-store', 'X-Robots-Tag' => 'noindex, nofollow']);
+    }
+
+    /**
+     * Sponsored-push consent (P11), for the PWA (customer session) and the
+     * apps (Sanctum). GET returns the setting; POST {on: bool} changes it.
+     */
+    public function pushOptIn(Request $request)
+    {
+        $user = auth('customer')->user() ?? $request->user('sanctum');
+        if (!$user) {
+            return response()->json(['status' => false, 'message' => 'Please log in.'], 401);
+        }
+        if ($request->isMethod('post')) {
+            $on = $request->boolean('on');
+            $user->forceFill(['ad_push_opt_in' => $on, 'ad_push_opt_in_at' => now()])->save();
+        }
+
+        return response()->json(['status' => true, 'data' => ['on' => (bool) $user->ad_push_opt_in]]);
+    }
+
+    /** GET /q/{code} — in-cab QR card (P18) scan: counted per card, then on to the advertiser. */
+    public function qr(string $code)
+    {
+        $card = AdQrCard::with('campaign')->where('code', strtoupper($code))->first();
+        $ad = $card && $card->campaign
+            ? AdServer::onScreen(AdServer::live()->where('ad_campaign_id', $card->campaign_id), AdServer::SCREEN_QR)->first()
+            : null;
+        if (!$ad || $card->removed_on) {
+            return redirect('/')->header('Cache-Control', 'no-store');
+        }
+        $card->increment('scans');
+        $click = AdvertisementUserClick::create([
+            'advertisement_id' => $ad->id,
+            'user_id' => auth('customer')->id(),
+            'screen_id' => AdServer::SCREEN_QR,
+            'platform' => 'qr',
+        ]);
+        $target = AdServer::landingUrl($ad, AdServer::SCREEN_QR, 'qr', $click->id) ?: '/';
+
+        return redirect()->away($target, 302, ['Cache-Control' => 'no-store', 'X-Robots-Tag' => 'noindex, nofollow']);
+    }
+
+    /**
+     * GET /ads/conv/{token}.gif?click=…&label=…&value=… — conversion tag on
+     * the advertiser's website (lead, booking, sale). `click` is the
+     * `sc_click` id we added to their landing URL; value is in rupees.
+     * One conversion per visitor, label and day. Always returns a 1×1 GIF.
+     */
+    public function conversion(Request $request, string $token)
+    {
+        $campaign = AdCampaign::where('conversion_token', $token)->first();
+        if ($campaign) {
+            $adIds = $campaign->items()->pluck('advertisement_id')->filter();
+            $clickId = (int) $request->query('click', 0);
+            $click = $clickId ? AdvertisementUserClick::whereKey($clickId)->whereIn('advertisement_id', $adIds)->first() : null;
+            $label = substr(preg_replace('/[^a-z0-9_-]/', '', strtolower((string) $request->query('label', 'lead'))), 0, 40) ?: 'lead';
+            $value = (int) round(min(10000000, max(0, (float) $request->query('value', 0))) * 100);
+            AdConversion::insertOrIgnore([
+                'campaign_id' => $campaign->id,
+                'click_id' => $click?->id,
+                'label' => $label,
+                'value' => $value,
+                'visitor' => $click ? 'c:' . $click->id : 'ip:' . substr(hash('sha256', $request->ip() . '|' . config('app.key')), 0, 36),
+                'date' => now('Asia/Kolkata')->toDateString(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        return response(base64_decode('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'), 200, [
+            'Content-Type' => 'image/gif',
+            'Cache-Control' => 'no-store, max-age=0',
+            'Access-Control-Allow-Origin' => '*',
+        ]);
     }
 
     /** GET /ads/web?page=… — one live website ad (P9) for a marketing page's group. */
@@ -67,7 +144,7 @@ class AdTrackingController extends Controller
         if (!$ad) {
             return response()->json(['status' => false, 'message' => 'Ad not found.'], 404);
         }
-        $userId = auth('customer')->id();
+        $userId = auth('customer')->id() ?? optional($request->user('sanctum'))->id;
         $reporter = $userId ? 'u:' . $userId : 'ip:' . substr(hash('sha256', $request->ip() . '|' . config('app.key')), 0, 40);
         $platform = in_array($data['platform'] ?? 'pwa', self::PLATFORMS, true) ? ($data['platform'] ?? 'pwa') : 'pwa';
         $ads->report($ad, $userId, $reporter, $data['reason'], $data['note'] ?? null, $platform);

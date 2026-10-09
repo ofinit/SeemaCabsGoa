@@ -53,6 +53,7 @@ Route::prefix('app')->name('customer.')->group(function () {
         Route::post('advertisement-click', [PageController::class, 'advertisementClick'])->name('advertisement-click');
         Route::post('ad-impressions', [\App\Http\Controllers\AdTrackingController::class, 'impressions'])->middleware('throttle:120,1')->name('ad-impressions');
         Route::post('ad-report', [\App\Http\Controllers\AdTrackingController::class, 'report'])->middleware('throttle:10,1')->name('ad-report');
+        Route::post('ad-push-opt-in', [\App\Http\Controllers\AdTrackingController::class, 'pushOptIn'])->middleware('throttle:20,1')->name('ad-push-opt-in');
         Route::get('page-content/{slug}', [PageController::class, 'pageContentJson'])->name('page-content');
     });
 
@@ -118,6 +119,9 @@ Route::prefix('app')->name('customer.')->group(function () {
                 Route::post('campaigns/{campaign}/resubmit', 'resubmit')->whereNumber('campaign')->name('campaigns.resubmit');
                 Route::post('campaigns/{campaign}/discard', 'discard')->whereNumber('campaign')->name('campaigns.discard');
                 Route::post('campaigns/{campaign}/renew', 'renew')->whereNumber('campaign')->name('campaigns.renew');
+                Route::post('campaigns/{campaign}/conversion-token', 'conversionToken')->whereNumber('campaign')->name('campaigns.conversion');
+                Route::post('client', 'switchClient')->name('client');
+                Route::post('agency', 'applyAgency')->middleware('throttle:5,1')->name('agency');
             });
         });
     });

@@ -39,9 +39,20 @@ class AdAvailability
                 $q->whereIn('c.status', AdCampaign::BOOKED)
                     ->orWhere(fn ($q) => $q->where('c.status', AdCampaign::PENDING_PAYMENT)->where('c.hold_expires_at', '>', now()));
             })
-            ->get(['cp.placement_id', 'c.start_date', 'c.end_date', 'c.targeting']);
+            ->get(['cp.placement_id', 'cp.units', 'c.start_date', 'c.end_date', 'c.targeting']);
         $websiteIds = AdPlacement::whereIn('id', $placementIds)->where('screen_id', AdServer::SCREEN_WEBSITE)->pluck('id')->all();
+        $billing = AdPlacement::whereIn('id', $placementIds)->pluck('billing', 'id');
         foreach ($campaignRows as $row) {
+            // P18: each booked cab takes a slot (slots = cabs carrying cards).
+            if (($billing[$row->placement_id] ?? 'day') === AdPlacement::PER_MONTH) {
+                self::add($usage[$row->placement_id], $row->start_date, $row->end_date, $from, $to, (int) $row->units);
+                continue;
+            }
+            // P11: a push only occupies its send day.
+            if (($billing[$row->placement_id] ?? 'day') === AdPlacement::PER_SEND) {
+                self::add($usage[$row->placement_id], $row->start_date, $row->start_date, $from, $to);
+                continue;
+            }
             if ($pageGroups && in_array($row->placement_id, $websiteIds)) {
                 $theirs = (array) (json_decode((string) $row->targeting, true)['page_groups'] ?? []);
                 if (!array_intersect($theirs, $pageGroups)) {
@@ -71,15 +82,17 @@ class AdAvailability
     }
 
     /** Sold-out dates per placement between two dates. @return array<int, string[]> */
-    public static function soldOut(iterable $placements, string $from, string $to, ?int $excludeCampaignId = null, array $pageGroups = []): array
+    public static function soldOut(iterable $placements, string $from, string $to, ?int $excludeCampaignId = null, array $pageGroups = [], array $units = []): array
     {
         $placements = collect($placements);
         $usage = self::usage($placements->pluck('id')->all(), $from, $to, $excludeCampaignId, $pageGroups);
         $out = [];
         foreach ($placements as $placement) {
+            // P18 needs room for all the cabs being booked.
+            $need = ($placement->billing ?? 'day') === AdPlacement::PER_MONTH ? max(1, (int) ($units[$placement->id] ?? 1)) : 1;
             $out[$placement->id] = array_keys(array_filter(
                 $usage[$placement->id] ?? [],
-                fn ($count) => $count >= $placement->slots
+                fn ($count) => $count + $need > $placement->slots
             ));
             sort($out[$placement->id]);
         }
@@ -88,10 +101,10 @@ class AdAvailability
     }
 
     /** Placements that are sold out on any day of the range: [code => first sold-out date]. */
-    public static function conflicts(iterable $placements, string $from, string $to, ?int $excludeCampaignId = null, array $pageGroups = []): array
+    public static function conflicts(iterable $placements, string $from, string $to, ?int $excludeCampaignId = null, array $pageGroups = [], array $units = []): array
     {
         $conflicts = [];
-        foreach (self::soldOut($placements, $from, $to, $excludeCampaignId, $pageGroups) as $placementId => $dates) {
+        foreach (self::soldOut($placements, $from, $to, $excludeCampaignId, $pageGroups, $units) as $placementId => $dates) {
             if ($dates) {
                 $placement = collect($placements)->firstWhere('id', $placementId);
                 $conflicts[$placement->code] = $dates[0];
@@ -134,7 +147,7 @@ class AdAvailability
         return $out;
     }
 
-    private static function add(array &$days, string $start, string $end, string $from, string $to): void
+    private static function add(array &$days, string $start, string $end, string $from, string $to, int $count = 1): void
     {
         $start = max(substr($start, 0, 10), $from);
         $end = min(substr($end, 0, 10), $to);
@@ -143,7 +156,7 @@ class AdAvailability
         }
         foreach (CarbonPeriod::create(Carbon::parse($start), Carbon::parse($end)) as $day) {
             $key = $day->toDateString();
-            $days[$key] = ($days[$key] ?? 0) + 1;
+            $days[$key] = ($days[$key] ?? 0) + $count;
         }
     }
 }

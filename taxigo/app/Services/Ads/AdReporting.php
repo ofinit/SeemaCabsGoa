@@ -18,13 +18,14 @@ use Illuminate\Support\Facades\Mail;
  */
 class AdReporting
 {
-    /** @return array{views: int, clicks: int, ctr: ?float, placements: array, days: array} */
+    /** @return array{views: int, clicks: int, ctr: ?float, placements: array, days: array, conversions: int, conversion_value: int, conversion_labels: array, push: array, qr: array} */
     public function stats(AdCampaign $campaign, ?string $from = null, ?string $to = null): array
     {
         $campaign->loadMissing('items.placement');
         $adIds = $campaign->items->pluck('advertisement_id')->filter()->values();
+        $extra = $this->extras($campaign, $from, $to);
         if ($adIds->isEmpty()) {
-            return ['views' => 0, 'clicks' => 0, 'ctr' => null, 'placements' => [], 'days' => []];
+            return ['views' => 0, 'clicks' => 0, 'ctr' => null, 'placements' => [], 'days' => []] + $extra;
         }
         $byAd = $campaign->items->filter(fn ($i) => $i->advertisement_id)->keyBy('advertisement_id');
 
@@ -57,6 +58,26 @@ class AdReporting
             'ctr' => $totalViews > 0 ? round($totalClicks * 100 / $totalViews, 2) : null,
             'placements' => $placements,
             'days' => $days,
+        ] + $extra;
+    }
+
+    /** Conversions (advertiser's tag), sponsored-push reach and QR card scans. */
+    private function extras(AdCampaign $campaign, ?string $from, ?string $to): array
+    {
+        $conversions = DB::table('ad_conversions')->where('campaign_id', $campaign->id)
+            ->when($from, fn ($q) => $q->where('date', '>=', $from))->when($to, fn ($q) => $q->where('date', '<=', $to))
+            ->groupBy('label')->selectRaw('label, COUNT(*) as n, SUM(value) as value')->get();
+        $push = DB::table('ad_push_sends')->where('campaign_id', $campaign->id)
+            ->selectRaw("SUM(recipients) as recipients, SUM(delivered) as delivered, MAX(sent_at) as sent_at, SUM(status = 'scheduled') as scheduled")->first();
+        $qr = DB::table('ad_qr_cards')->where('campaign_id', $campaign->id)
+            ->selectRaw('COUNT(*) as cards, SUM(placed_on IS NOT NULL AND removed_on IS NULL) as placed, SUM(scans) as scans')->first();
+
+        return [
+            'conversions' => (int) $conversions->sum('n'),
+            'conversion_value' => (int) $conversions->sum('value'),
+            'conversion_labels' => $conversions->mapWithKeys(fn ($r) => [$r->label => (int) $r->n])->all(),
+            'push' => ['recipients' => (int) ($push->recipients ?? 0), 'delivered' => (int) ($push->delivered ?? 0), 'sent_at' => $push->sent_at ?? null, 'scheduled' => (int) ($push->scheduled ?? 0)],
+            'qr' => ['cards' => (int) ($qr->cards ?? 0), 'placed' => (int) ($qr->placed ?? 0), 'scans' => (int) ($qr->scans ?? 0)],
         ];
     }
 

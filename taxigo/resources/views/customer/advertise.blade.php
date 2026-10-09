@@ -36,6 +36,7 @@
                         @endphp
                         <a href="{{ $campaign->isEditable() && !$campaign->isPaid() ? route('customer.ads.edit', $campaign) : route('customer.ads.show', $campaign) }}" class="card p-4 flex items-center justify-between gap-3">
                             <div class="min-w-0">
+                                @if($agency && $agency->isApproved())<p class="text-[11px] uppercase tracking-wider text-muted">{{ $campaign->advertiser->business_name ?? '' }}</p>@endif
                                 <p class="font-semibold text-ink text-sm">{{ $campaign->reference }}
                                     <span class="text-muted font-normal">· {{ $campaign->items->map(fn ($i) => $i->placement->code)->implode(', ') }}</span></p>
                                 <p class="text-xs text-muted mt-0.5">
@@ -64,6 +65,32 @@
                         </a>
                     @endforeach
                 </div>
+            </div>
+        @endif
+
+        @if($enabled)
+            <div class="card text-sm" x-data="{ open: false, name: '', gstin: '', msg: '', busy: false,
+                async apply() {
+                    this.busy = true; this.msg = '';
+                    try { const r = await apiFetch(@js(route('customer.actions.ads.agency')), { method: 'POST', body: { name: this.name, gstin: this.gstin } }); this.msg = r.message; this.open = false; }
+                    catch (e) { this.msg = e.message; }
+                    this.busy = false;
+                } }">
+                @if($agency && $agency->isApproved())
+                    <p class="font-semibold text-ink">Agency account: {{ $agency->name }}</p>
+                    <p class="text-muted text-xs mt-1">Book ads for any of your clients — pick or add the client in the first step.</p>
+                    <a href="{{ route('customer.ads.create') }}?new_client=1" class="btn-outline w-full mt-3 !py-2.5 text-sm">Add a client</a>
+                @elseif($agency)
+                    <p class="text-muted">Your agency account request ({{ $agency->name }}) is {{ $agency->status === 'blocked' ? 'not approved' : 'being reviewed' }}.</p>
+                @else
+                    <button type="button" class="underline text-muted" @click="open = !open">Advertising agency? Manage several clients from one login</button>
+                    <div x-show="open" class="space-y-2 mt-3" style="display:none">
+                        <input class="field-input" x-model="name" placeholder="Agency name" maxlength="120">
+                        <input class="field-input uppercase" x-model="gstin" placeholder="Agency GSTIN (optional)" maxlength="15">
+                        <button type="button" class="btn-primary w-full" @click="apply()" :disabled="busy || !name">Apply</button>
+                    </div>
+                @endif
+                <p class="text-xs mt-2" x-show="msg" x-text="msg"></p>
             </div>
         @endif
 

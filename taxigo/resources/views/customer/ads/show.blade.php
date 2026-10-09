@@ -94,8 +94,36 @@
                     </details>
                 @endif
                 <p class="text-xs text-muted">A view counts when at least half the ad is on screen for one second. Numbers update every few minutes.</p>
+                @if($stats['qr']['cards'])
+                    <p class="text-sm text-ink">In-cab QR cards: {{ $stats['qr']['placed'] }} of {{ $stats['qr']['cards'] }} placed · {{ number_format($stats['qr']['scans']) }} scans</p>
+                @endif
+                @if($stats['push']['recipients'] || $stats['push']['scheduled'])
+                    <p class="text-sm text-ink">Sponsored push:
+                        {{ $stats['push']['sent_at'] ? 'sent to ' . number_format($stats['push']['recipients']) . ' customers (' . number_format($stats['push']['delivered']) . ' delivered)' : 'scheduled for ' . $campaign->start_date->format('d M') . ', 10 am – 8 pm' }}</p>
+                @endif
+                @if($stats['conversions'])
+                    <p class="text-sm text-ink">Conversions: {{ number_format($stats['conversions']) }}
+                        @if($stats['conversion_value']) · value {{ AdCampaign::rupees($stats['conversion_value']) }}@endif
+                        @if($stats['clicks']) · {{ round($stats['conversions'] * 100 / max(1, $stats['clicks']), 1) }}% of taps @endif</p>
+                @endif
                 <a href="{{ route('customer.ads.export', $campaign) }}" class="text-sm underline">Download results (CSV)</a>
             </div>
+
+            @if($campaign->landing_type === 'website')
+                <div class="card space-y-2" id="conversions">
+                    <h2 class="font-semibold text-ink">Track leads &amp; sales <span class="text-muted font-normal text-sm">(optional)</span></h2>
+                    @if($campaign->conversion_token)
+                        <p class="text-xs text-muted">Add this once to every page of your website (your web developer can help):</p>
+                        <pre class="text-[11px] bg-cream rounded-xl p-3 overflow-x-auto whitespace-pre-wrap break-all">&lt;script&gt;(function(){var p=new URLSearchParams(location.search),c=p.get('sc_click');if(c){try{localStorage.setItem('sc_click',c)}catch(e){}}
+window.seemaConversion=function(label,value){var id='';try{id=localStorage.getItem('sc_click')||''}catch(e){}
+new Image().src='{{ route('ads.conversion', $campaign->conversion_token) }}?click='+id+'&amp;label='+encodeURIComponent(label||'lead')+'&amp;value='+(value||0)};})();&lt;/script&gt;</pre>
+                        <p class="text-xs text-muted">Then, on your "thank you" page after a booking or enquiry, run <code>seemaConversion('booking', 1500)</code> — the label and the amount in rupees are up to you. Conversions show up in the results above.</p>
+                    @else
+                        <p class="text-xs text-muted">See how many people who tapped your ad went on to book or enquire on your website.</p>
+                        <button type="button" class="btn-outline w-full !py-2.5 text-sm" @click="conversion()" :disabled="busy">Turn on conversion tracking</button>
+                    @endif
+                </div>
+            @endif
 
             <div class="card space-y-2">
                 <h2 class="font-semibold text-ink">Payment</h2>
@@ -140,6 +168,14 @@
 function adCampaign() {
     return {
         busy: false, error: '',
+        async conversion() {
+            this.busy = true; this.error = '';
+            try {
+                const res = await apiFetch(@js(route('customer.actions.ads.campaigns.conversion', $campaign)), { method: 'POST', body: {} });
+                window.location.href = res.data.redirect;
+                window.location.reload();
+            } catch (e) { this.error = e.message; this.busy = false; }
+        },
         async renew() {
             this.busy = true; this.error = '';
             try {

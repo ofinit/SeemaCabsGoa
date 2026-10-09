@@ -18,6 +18,11 @@ class AdAdvertiser extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function agency(): BelongsTo
+    {
+        return $this->belongsTo(AdAgency::class, 'agency_id');
+    }
+
     public function category(): BelongsTo
     {
         return $this->belongsTo(AdCategory::class, 'category_id');
