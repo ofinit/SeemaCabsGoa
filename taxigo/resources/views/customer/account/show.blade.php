@@ -169,7 +169,7 @@
         <div x-data="installPrompt()" x-show="show" x-transition style="display:none">
             <button type="button" @click="install" class="btn-outline w-full flex items-center justify-center gap-2 py-3 text-xs font-bold">
                 <svg class="w-4 h-4 text-gold" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="4"/><path d="M12 8v8M8 12h8"/></svg>
-                Install Seema Cabs PWA App
+                Install Seema Cabs App
             </button>
             @include('customer.components.ios-install-sheet')
         </div>
