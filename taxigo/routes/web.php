@@ -4,6 +4,7 @@ use App\Http\Controllers\Admin\AuthController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\InvoiceDocumentController;
+use App\Http\Controllers\AdTrackingController;
 use Illuminate\Support\Facades\Auth;
 
 /*
@@ -35,6 +36,9 @@ Route::redirect('refund-policy', '/cancellation-refund-policy.html');
 
 // GST documents via signed, login-free links (emails and the mobile apps).
 Route::get('invoices/{invoice}', [InvoiceDocumentController::class, 'signed'])->middleware('signed')->name('invoices.public');
+
+// Ad click tracking: signed link → click counted → advertiser URL with UTM tags.
+Route::get('ads/c/{advertisement}', [AdTrackingController::class, 'click'])->middleware(['signed', 'throttle:120,1'])->name('ads.click');
 
 // The Docker image copies the static marketing site into public/, so the root
 // URL serves its homepage. Without it (e.g. local dev) fall back to the legacy

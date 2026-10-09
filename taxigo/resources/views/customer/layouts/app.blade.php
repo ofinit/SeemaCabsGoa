@@ -37,6 +37,7 @@
         @include('customer.components.toast-host')
     </div>
 
+    @include('customer.components.ad-tracker')
     @stack('scripts')
 </body>
 </html>

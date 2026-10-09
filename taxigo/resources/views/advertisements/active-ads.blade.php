@@ -61,6 +61,8 @@
                                     <th>End Date</th>
                                     <th>End Time</th>
                                     <th>No. of Clicks</th>
+                                    <th>Views</th>
+                                    <th>Status</th>
                                     {{-- <th>No. of Leads</th> --}}
                                     <th>Action</th>
                                 </tr>
@@ -302,6 +304,27 @@
                         }
                     },
                     {
+                        data: 'views',
+                        name: 'views',
+                        orderable: false,
+                        render: function (data, type, row) {
+                            return (row.views ?? 0) + ' <small class="text-muted">(CTR ' + (row.ctr ?? '--') + ')</small>';
+                        }
+                    },
+                    {
+                        data: 'approval_status',
+                        name: 'approval_status',
+                        orderable: false,
+                        render: function (data, type, row) {
+                            var paused = row.approval_status === 'paused';
+                            var badge = paused ? '<span class="badge bg-light-warning">Paused</span>' : '<span class="badge bg-light-success">Live</span>';
+                            if (row.payment_status && row.payment_status !== 'paid') {
+                                badge += ' <span class="badge bg-light-danger">Unpaid</span>';
+                            }
+                            return badge;
+                        }
+                    },
+                    {
                         data: 'id',
                         name: 'id',
                         render: function (data, type, row) {
@@ -316,7 +339,10 @@
 
                                 <a href="${editUrl}"
                                     class="btn btn-sm btn-light-success me-1 renewAd"
-                                    data-bs-toggle="modal" data-bs-target="#renewAd" data-id="${row.id}"><i class="feather icon-edit"></i></a>`;
+                                    data-bs-toggle="modal" data-bs-target="#renewAd" data-id="${row.id}"><i class="feather icon-edit"></i></a>
+
+                                <a href="javascript:void(0)" title="${row.approval_status === 'paused' ? 'Resume' : 'Pause'}"
+                                    class="btn btn-sm btn-light-warning me-1 toggle-ad-status" data-id="${row.id}"><i class="feather icon-${row.approval_status === 'paused' ? 'play' : 'pause'}"></i></a>`;
                             return html;
                         }
                     }
@@ -338,6 +364,26 @@
                     .replace(
                         ':advertisement', id);
                 $('.renewForm').attr('action', exportUrl);
+            });
+
+            $(document).on('click', '.toggle-ad-status', function (e) {
+                e.preventDefault();
+                var btn = $(this);
+                if (btn.data('busy')) return;
+                btn.data('busy', true);
+                $.ajax({
+                    url: "{{ route('admin.advertisements.activeAdds.toggleStatus', ':advertisement') }}".replace(':advertisement', btn.data('id')),
+                    type: 'POST',
+                    data: { _token: '{{ csrf_token() }}' },
+                    success: function (res) {
+                        toastr.success(res.message);
+                        $('#activeAddTable').DataTable().ajax.reload(null, false);
+                    },
+                    error: function (error) {
+                        toastr.error((error.responseJSON && error.responseJSON.message) || 'Something went wrong.');
+                    },
+                    complete: function () { btn.data('busy', false); }
+                });
             });
         });
         $(document).ready(function () {

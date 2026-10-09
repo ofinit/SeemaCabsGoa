@@ -50,6 +50,7 @@ Route::prefix('app')->name('customer.')->group(function () {
         Route::get('states/{country}', [PageController::class, 'statesJson'])->name('states');
         Route::get('advertisements', [PageController::class, 'advertisementsJson'])->name('advertisements');
         Route::post('advertisement-click', [PageController::class, 'advertisementClick'])->name('advertisement-click');
+        Route::post('ad-impressions', [\App\Http\Controllers\AdTrackingController::class, 'impressions'])->middleware('throttle:120,1')->name('ad-impressions');
         Route::get('page-content/{slug}', [PageController::class, 'pageContentJson'])->name('page-content');
     });
 

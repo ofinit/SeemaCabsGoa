@@ -36,15 +36,19 @@ class ActiveAddController extends Controller
             $orderByColumn = $columns[$orderColumnIndex] ?? 'id';
             $search = $request->search ?? '';
             $currentDate = date('Y-m-d');
-            $query = Advertisement::where('start_date', '<=', $currentDate)->where('end_date', '>=', $currentDate)->with('user', 'country', 'state', 'location')->withCount('advertisementUserClicks');
+            $query = Advertisement::where('start_date', '<=', $currentDate)->where('end_date', '>=', $currentDate)->with('user', 'country', 'state', 'location')
+                ->withCount('advertisementUserClicks')
+                ->withSum('impressions as impressions_total', 'views');
             if ($search) {
-                $query->whereHas('user', function ($query) use ($search) {
-                    $query->where('users.name', 'like', "%" . $search . "%");
-                })
-                    // ->where('billing_company_name', 'like', "%" . $search . "%")
-                    ->orWhere('banner_url', 'like', "%" . $search . "%")
-                    ->OrWhereRaw("DATE_FORMAT(start_date, '%d-%m-%Y') LIKE ?", ['%' . $search . '%'])
-                    ->OrWhereRaw("DATE_FORMAT(end_date, '%d-%m-%Y') LIKE ?", ['%' . $search . '%']);
+                // Grouped so the search can't pull in ads outside the active date range.
+                $query->where(function ($q) use ($search) {
+                    $q->whereHas('user', function ($query) use ($search) {
+                        $query->where('users.name', 'like', "%" . $search . "%");
+                    })
+                        ->orWhere('banner_url', 'like', "%" . $search . "%")
+                        ->orWhereRaw("DATE_FORMAT(start_date, '%d-%m-%Y') LIKE ?", ['%' . $search . '%'])
+                        ->orWhereRaw("DATE_FORMAT(end_date, '%d-%m-%Y') LIKE ?", ['%' . $search . '%']);
+                });
             }
             $recordsTotal = $query->count();
             $list = $query->orderBy($orderByColumn, $orderBy)
@@ -54,6 +58,11 @@ class ActiveAddController extends Controller
             $advertisement['screen_list'] = "--";
             if (!empty($list)) {
                 foreach ($list as $advertisement) {
+                    $views = (int) ($advertisement->impressions_total ?? 0);
+                    $advertisement['views'] = $views;
+                    $advertisement['ctr'] = $views > 0
+                        ? round($advertisement->advertisement_user_clicks_count * 100 / $views, 2) . '%'
+                        : '--';
                     if (!empty($advertisement->screens)) {
                         $listId = json_decode($advertisement->screens, true);
                         $advertisement['screen_list'] = getScreenTitleList($listId);
@@ -84,6 +93,28 @@ class ActiveAddController extends Controller
         } catch (\Exception $e) {
             Log::error('Getting error of renew add :' . $e->getMessage());
             return redirect()->back()->with('error', 'Something went wrong,Please try again latter.');
+        }
+    }
+
+    /** Pause a running ad (stops serving immediately) or resume it. */
+    public function toggleStatus(Request $request, Advertisement $advertisement)
+    {
+        try {
+            $paused = $advertisement->approval_status === Advertisement::PAUSED;
+            $advertisement->approval_status = $paused ? Advertisement::APPROVED : Advertisement::PAUSED;
+            $advertisement->status_changed_by = auth()->id();
+            $advertisement->status_changed_at = now();
+            $advertisement->status_note = $request->input('note');
+            $advertisement->save();
+
+            return response()->json([
+                'status' => true,
+                'approval_status' => $advertisement->approval_status,
+                'message' => $paused ? 'Ad resumed.' : 'Ad paused.',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Getting error of toggle ad status :' . $e->getMessage());
+            return response()->json(['status' => false, 'message' => 'Something went wrong, Please try again later.'], 500);
         }
     }
 

@@ -134,7 +134,9 @@
                 </div>
                 <div class="card p-0 overflow-hidden relative border border-black/[0.06] shadow-sm">
                     <template x-for="(ad, i) in ads" :key="ad.id">
-                        <a :href="ad.banner_url || '#'" target="_blank"
+                        <a :href="ad.click_url || ad.banner_url || '#'" target="_blank" rel="noopener sponsored"
+                           :data-ad-id="ad.id" :data-ad-screen="ad.screen"
+                           class="block relative"
                            x-show="i === active"
                            x-transition:enter="transition ease-out duration-500"
                            x-transition:enter-start="opacity-0 scale-[1.02]"
@@ -143,6 +145,7 @@
                            x-transition:leave-start="opacity-100"
                            x-transition:leave-end="opacity-0">
                             <img :src="ad.banner_image" class="w-full h-auto" alt="Advertisement">
+                            <span class="absolute top-1.5 right-1.5 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">Sponsored</span>
                         </a>
                     </template>
                 </div>

@@ -266,6 +266,7 @@ Route::group(['prefix' => 'admin', 'middleware' => ['auth', 'TwoFa'], 'as' => 'a
             Route::get('/', [ActiveAddController::class, 'index'])->name('index');
             Route::post('/', [ActiveAddController::class, 'list'])->name('list');
             Route::post('/renew-ad/{advertisement}', [ActiveAddController::class, 'renew'])->name('renew');
+            Route::post('/toggle-status/{advertisement}', [ActiveAddController::class, 'toggleStatus'])->name('toggleStatus');
             Route::post('view-leads', [ActiveAddController::class, 'viewLeads'])->name('viewLeads');
             Route::post('view-leads-list/{id}', [ActiveAddController::class, 'viewLeadsList'])->name('viewLeadsList');
             Route::get('/export-lead-details', [ActiveAddController::class, 'exportLeadDetails'])->name('exportLeadDetails');

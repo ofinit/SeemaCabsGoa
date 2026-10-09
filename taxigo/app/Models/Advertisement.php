@@ -29,7 +29,22 @@ class Advertisement extends BaseModel
         'payment_method',
         'default',
         'total_amount',
+        'approval_status',
+        'payment_status',
+        'status_changed_by',
+        'status_changed_at',
+        'status_note',
     ];
+
+    public const APPROVED = 'approved';
+    public const PAUSED = 'paused';
+    public const PENDING = 'pending';
+    public const REJECTED = 'rejected';
+
+    public function impressions()
+    {
+        return $this->hasMany(AdvertisementImpression::class);
+    }
 
     public function getStartDateAttribute($value)
     {

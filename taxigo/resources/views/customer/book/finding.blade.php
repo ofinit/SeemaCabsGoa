@@ -11,8 +11,11 @@
         <template x-for="slot in ads" :key="slot.key">
             <div x-show="slot.ad" style="display:none">
                 <h2 class="font-semibold text-ink mb-2">Advertisement</h2>
-                <a :href="slot.ad && (slot.ad.banner_url || '#')" target="_blank" class="card p-0 overflow-hidden block">
+                <a :href="slot.ad && (slot.ad.click_url || slot.ad.banner_url || '#')" target="_blank" rel="noopener sponsored"
+                   :data-ad-id="slot.ad && slot.ad.id" :data-ad-screen="slot.screen"
+                   class="card p-0 overflow-hidden block relative">
                     <img :src="slot.ad && slot.ad.banner_image" class="w-full h-auto" alt="Advertisement">
+                    <span class="absolute top-1.5 right-1.5 rounded bg-black/55 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">Sponsored</span>
                 </a>
             </div>
         </template>
@@ -48,7 +51,8 @@
 <script>
     function findingTaxi(topAd = null, bottomAd = null) {
         return {
-            ads: [{ key: 'top', ad: topAd }, { key: 'bottom', ad: bottomAd }],
+            // Screen ids match screen_prices: 3 = finding-a-taxi top, 8 = bottom.
+            ads: [{ key: 'top', screen: 3, ad: topAd }, { key: 'bottom', screen: 8, ad: bottomAd }],
             progress: 0,
             async init() {
                 if (!sessionStorage.getItem('pendingBooking')) {
@@ -74,11 +78,14 @@
                 requestAnimationFrame(tick);
             },
             async loadAds() {
-                try {
-                    const res = await apiFetch('{{ route('customer.actions.advertisements') }}');
-                    this.ads[0].ad = (res.data && res.data.data && res.data.data[0]) || null;
-                    this.ads[1].ad = (res.data && res.data.second_data && res.data.second_data[0]) || (res.data && res.data.data && res.data.data[1]) || null;
-                } catch (e) { /* ads are non-critical */ }
+                const url = '{{ route('customer.actions.advertisements') }}';
+                for (const slot of this.ads) {
+                    try {
+                        const res = await apiFetch(url + '?platform=pwa&screen=' + slot.screen);
+                        const ad = (res.data && res.data.data && res.data.data[0]) || null;
+                        if (ad && !this.ads.some(s => s.ad && s.ad.id === ad.id)) slot.ad = ad;
+                    } catch (e) { /* ads are non-critical */ }
+                }
             },
         };
     }

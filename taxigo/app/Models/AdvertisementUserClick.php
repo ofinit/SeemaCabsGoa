@@ -9,6 +9,8 @@ class AdvertisementUserClick extends Model
     protected $fillable = [
         'advertisement_id',
         'user_id',
+        'screen_id',
+        'platform',
         'latitude',
         'longitude',
     ];

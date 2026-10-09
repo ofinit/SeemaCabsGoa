@@ -19,6 +19,7 @@ use App\Models\Country;
 use App\Models\Environment;
 use App\Models\SightSeeingPackages;
 use App\Models\State;
+use App\Services\Ads\AdServer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -35,20 +36,12 @@ class PageController extends Controller
 
     public function home(Request $request)
     {
-        $currentDate = date('Y-m-d');
-        $ads = Advertisement::where('start_date', '<=', $currentDate)
-            ->where('end_date', '>=', $currentDate)
-            ->orderBy('id', 'desc')
-            ->get()
-            ->map(function ($ad) {
-                return [
-                    'id' => $ad->id,
-                    'banner_image' => $ad->add_banner_image,
-                    'banner_url' => $ad->banner_url,
-                ];
-            });
+        // Home carousel: ads booked on the Home screen (screen 1) only.
+        $ads = AdServer::forScreen(AdServer::SCREEN_HOME)
+            ->map(fn ($ad) => AdServer::payload($ad, AdServer::SCREEN_HOME, 'pwa'))
+            ->values();
 
-        $packages = SightSeeingPackages::with('packageImages')->get()->map(function ($p) {
+        $packages =SightSeeingPackages::with('packageImages')->get()->map(function ($p) {
             $images = [];
             foreach ($p->packageImages as $val) {
                 $images[] = getFileUrl($val->image);
@@ -174,23 +167,12 @@ class PageController extends Controller
 
     public function finding(Request $request)
     {
-        $currentDate = date('Y-m-d');
-        $ads = Advertisement::where('start_date', '<=', $currentDate)
-            ->where('end_date', '>=', $currentDate)
-            ->orderBy('id', 'desc')
-            ->get();
+        // Finding-a-taxi has its own top and bottom slots (screen 3 / screen 8).
+        $top = AdServer::forScreen(AdServer::SCREEN_FINDING_TOP, 1)->first();
+        $bottom = AdServer::forScreen(AdServer::SCREEN_FINDING_BOTTOM, 1)->first();
 
-        $topAd = $ads->first() ? [
-            'id' => $ads->first()->id,
-            'banner_image' => $ads->first()->add_banner_image,
-            'banner_url' => $ads->first()->banner_url,
-        ] : null;
-
-        $bottomAd = $ads->count() > 1 ? [
-            'id' => $ads->get(1)->id,
-            'banner_image' => $ads->get(1)->add_banner_image,
-            'banner_url' => $ads->get(1)->banner_url,
-        ] : null;
+        $topAd = $top ? AdServer::payload($top, AdServer::SCREEN_FINDING_TOP, 'pwa') : null;
+        $bottomAd = $bottom && $bottom->id !== $top?->id ? AdServer::payload($bottom, AdServer::SCREEN_FINDING_BOTTOM, 'pwa') : null;
 
         return view('customer.book.finding', compact('topAd', 'bottomAd'));
     }
@@ -439,18 +421,9 @@ class PageController extends Controller
 
     public function advertise(Request $request)
     {
-        $currentDate = date('Y-m-d');
-        $ads = Advertisement::where('start_date', '<=', $currentDate)
-            ->where('end_date', '>=', $currentDate)
-            ->orderBy('id', 'desc')
-            ->get()
-            ->map(function ($ad) {
-                return [
-                    'id' => $ad->id,
-                    'banner_image' => $ad->add_banner_image,
-                    'banner_url' => $ad->banner_url,
-                ];
-            });
+        // Showcase of everything currently live (approved, paid, in its time window).
+        $ads = AdServer::live()->orderByDesc('id')->limit(10)->get()
+            ->map(fn ($ad) => AdServer::payload($ad, null, 'pwa'));
 
         return view('customer.advertise', compact('ads'));
     }
