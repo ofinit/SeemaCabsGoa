@@ -125,7 +125,7 @@
                 }
             }">
                 <div class="flex items-center justify-between mb-2">
-                    <h2 class="text-xs font-bold uppercase tracking-wider text-muted">Special Offers</h2>
+                    <h2 class="text-xs font-bold uppercase tracking-wider text-muted">Advertisement</h2>
                     <div class="flex gap-1" x-show="ads.length > 1">
                         <template x-for="(ad, i) in ads" :key="i">
                             <button type="button" @click="active = i" class="w-1.5 h-1.5 rounded-full transition-all duration-300" :class="i === active ? 'bg-gold w-4' : 'bg-gray-300'"></button>
