@@ -45,7 +45,7 @@
                                 @error($key)<div class="text-danger small mt-1">{{ $message }}</div>@enderror
                             </div>
                         @endforeach
-                        <p class="text-muted small">A negative markup is a discount. Both commissions are a % of the fare customers see (markup included, GST excluded) and are paid out of the online advance; any GST inside the advance stays with Seema Holidays.</p>
+                        <p class="text-muted small">A negative markup is a discount. Both commissions are a % of the fare customers see (markup included, GST excluded) and are paid out of the online advance. OfinIT receives its fee plus GST on it (rate under Settings → GST); the fleet operator gets the rest of the advance, up to its commission; any ride GST inside the advance stays with Seema Holidays.</p>
                         <button type="submit" class="btn btn-primary">Save pricing</button>
                     </form>
                 </div>
@@ -59,7 +59,7 @@
                     <table class="table table-sm mb-2">
                         <thead><tr><th></th><th class="text-end">Now</th><th class="text-end">If GST on</th></tr></thead>
                         <tbody>
-                            @foreach (['fare_before_markup' => 'Fare before markup', 'markup' => 'Markup (internal)', 'fare' => 'Fare shown to customer', 'gst' => 'GST', 'total' => 'Customer pays', 'advance' => 'Advance online', 'balance' => 'Balance to driver', 'platform_fee' => '↳ OfinIT platform fee', 'operator' => '↳ Fleet operator commission', 'retained' => '↳ GST in advance (Seema Holidays)'] as $k => $label)
+                            @foreach (['fare_before_markup' => 'Fare before markup', 'markup' => 'Markup (internal)', 'fare' => 'Fare shown to customer', 'gst' => 'GST', 'total' => 'Customer pays', 'advance' => 'Advance online', 'balance' => 'Balance to driver', 'platform_fee' => '↳ OfinIT platform fee', 'platform_fee_gst' => '↳ GST on platform fee (to OfinIT)', 'operator' => '↳ Fleet operator (rest of advance)', 'retained' => '↳ Ride GST in advance (Seema Holidays)'] as $k => $label)
                                 <tr class="{{ $k === 'total' ? 'fw-bold' : '' }}">
                                     <td>{{ $label }}</td>
                                     <td class="text-end">₹{{ number_format($example['now'][$k], 2) }}</td>

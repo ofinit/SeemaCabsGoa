@@ -108,16 +108,19 @@ class FareCalculator
         $balance = $total - $advance;
 
         // Commissions are a % of the fare the customer sees (markup included,
-        // GST excluded). With 10% + 10% and a 20% advance, the advance splits
-        // exactly into the two commissions; any GST inside the advance stays
-        // with the supplier (Seema Holidays) for remittance, never paid out.
+        // ride GST excluded). OfinIT's fee carries its own GST (18% by default),
+        // which is also taken out of the online advance. The ride GST inside
+        // the advance stays with Seema Holidays for remittance. The fleet
+        // operator gets what is left, up to its own commission:
+        //   ₹1,200 fare, 10% + 10%, 20% advance → OfinIT ₹120 + ₹21.60 GST,
+        //   fleet operator ₹240 − ₹141.60 = ₹98.40.
         $platformFee = self::roundRupee((int) round($fare * $platformFeePercent / 100));
+        $platformFeeGst = (int) round($platformFee * $this->percent(PricingSettings::GST_RATE_PLATFORM_FEE) / 100);
         $operatorCommission = self::roundRupee((int) round($fare * $operatorPercent / 100));
-        // Rupee rounding can make the two commissions exceed the advance by ₹1;
-        // never pay the operator more than what's left of the advance.
+        $rideGstInAdvance = $gstRate > 0 ? $advance - (int) round($advance * 100 / (100 + $gstRate)) : 0;
         $fleetOperatorPayment = $kind === 'ride'
-            ? max(0, min($operatorCommission, $advance - $platformFee))
-            : $fare - $platformFee;
+            ? max(0, min($operatorCommission, $advance - $rideGstInAdvance - $platformFee - $platformFeeGst))
+            : max(0, $fare - $platformFee - $platformFeeGst);
         $tds = (int) round($fare * $this->percent(Type::TdsTitle) / 100);
 
         $sac = trim((string) ($this->settings[$sacKey] ?? ''));
@@ -139,6 +142,7 @@ class FareCalculator
             balance: $balance,
             platformFeePercent: $platformFeePercent,
             platformFee: $platformFee,
+            platformFeeGst: $platformFeeGst,
             operatorCommission: $operatorCommission,
             fleetOperatorPayment: $fleetOperatorPayment,
             tds: $tds,

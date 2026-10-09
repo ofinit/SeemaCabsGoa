@@ -26,6 +26,7 @@ class FareBreakdown
         public readonly int $balance,              // paid to the driver
         public readonly float $platformFeePercent,
         public readonly int $platformFee,          // OfinIT platform fee (% of fare incl. markup, excl. GST)
+        public readonly int $platformFeeGst,       // GST on that fee (default 18%), also taken from the advance
         public readonly int $operatorCommission,
         public readonly int $fleetOperatorPayment,
         public readonly int $tds,
@@ -80,6 +81,8 @@ class FareBreakdown
         return [
             'fleet_operator_commission' => self::rupees($this->operatorCommission),
             'company_commission' => self::rupees($this->platformFee),
+            'platform_fee_gst' => self::rupees($this->platformFeeGst),
+            'platform_fee_total' => self::rupees($this->platformFee + $this->platformFeeGst),
             'gst_amount' => self::rupees($this->gst),
             'tds_amount' => self::rupees($this->tds),
             'fleet_operator_total_payment' => self::rupees($this->fleetOperatorPayment),

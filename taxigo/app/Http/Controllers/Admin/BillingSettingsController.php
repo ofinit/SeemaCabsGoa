@@ -233,8 +233,9 @@ class BillingSettingsController extends Controller
             'advance' => FareBreakdown::rupees($f->advance),
             'balance' => FareBreakdown::rupees($f->balance),
             'platform_fee' => FareBreakdown::rupees($f->platformFee),
+            'platform_fee_gst' => FareBreakdown::rupees($f->platformFeeGst),
             'operator' => FareBreakdown::rupees($f->fleetOperatorPayment),
-            'retained' => FareBreakdown::rupees($f->advance - $f->platformFee - $f->fleetOperatorPayment),
+            'retained' => FareBreakdown::rupees($f->advance - $f->platformFee - $f->platformFeeGst - $f->fleetOperatorPayment),
         ];
 
         return ['now' => $row($ride), 'with_gst' => $row($withGst)];
