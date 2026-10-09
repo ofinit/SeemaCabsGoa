@@ -25,6 +25,14 @@ use App\Services\NotificationService;
 use Illuminate\Support\Facades\Schema;
 use App\Http\Requests\Api\StoreBookingRequest;
 use App\Models\UserFcmToken;
+use App\Models\CabPriceType;
+use App\Models\Invoice;
+use App\Models\SightSeeingPackageCabPrice;
+use App\Services\Invoicing\InvoiceService;
+use App\Services\Payments\PaymentVerifier;
+use App\Services\Pricing\FareBreakdown;
+use App\Services\Pricing\FareCalculator;
+use App\Support\Gstin;
 use Illuminate\Support\Facades\Auth;
 
 class BookingController extends ResponseController
@@ -67,53 +75,59 @@ class BookingController extends ResponseController
                 return response()->json(['status' => false, 'user_status' => false, 'message' => 'Account Suspended. Contact Support.']);
             }
 
+            // Price is always recalculated here from the selected cab rate;
+            // amounts sent by the client are only compared, never stored.
+            $cabPrice = CabPriceType::with('cabRate')
+                ->where('cab_rate_id', $request->cab_id)
+                ->where('cab_type', $request->cab_type)
+                ->whereNull('deleted_at')
+                ->orderBy('id')
+                ->first();
+            if (!$cabPrice || !$cabPrice->cabRate) {
+                return $this->error('The selected cab is no longer available. Please search again.');
+            }
+
+            $fare = FareCalculator::fromDatabase()->ride(
+                (float) $cabPrice->base_fare,
+                (int) $cabPrice->cabRate->tab,
+                $pickupDateTime,
+                now(),
+            );
+            if ($this->clientAmountsDiffer($request, $fare->total, $fare->advance)) {
+                return $this->error('Prices have been updated. Please go back and select your cab again.');
+            }
+
+            $gstDetails = $this->businessGstDetails($request);
+            if (is_string($gstDetails)) {
+                return $this->error($gstDetails);
+            }
+
             DB::beginTransaction();
             $data = $request->validated();
             $bookingId = $this->createNewBookingId();
             $randomOtp = mt_rand(1000, 9999);
+            $data['customer_id'] = $user->id;
             $data['booking_date'] = date('Y-m-d');
             $data['booking_id'] = $bookingId;
             $data['cab_rate_id'] = $data['cab_id'];
             $data['status'] = Type::UNPAID;
             $data['payment_status'] = Type::INACTIVE;
             $data['pickup_date'] = Carbon::parse($data['pickup_date'])->format('Y-m-d');
-            $data['cash_with_driver'] = $data['remain_payment'] ?? 0;
-            $data['surge_price'] = $data['surge_price'] ?? 0;
             $data['trip_otp'] = $randomOtp;
-//            $data['total_payment'] = ((float) $request->part_payment +  (float) $request->remain_payment);
+            $data = array_merge($data, $fare->bookingAttributes(), $gstDetails);
             Schema::disableForeignKeyConstraints();
             $bookingDetails = BookingDetail::create($data);
             Schema::enableForeignKeyConstraints();
             if ($bookingDetails) {
-                $gst = Environment::where('title', Type::GstTitle)->first();
-                $tds = Environment::where('title', Type::TdsTitle)->first();
-                $gst = $gst ? $gst->value : 0.00;
-                $tds = $tds ? $tds->value : 0.00;
-                $fleetOperatorCommission = Environment::where('title', Type::FleetOperatorCommission)->first();
-                $fleetOperatorCommissionTotal = number_format(($request->base_fare * ($fleetOperatorCommission ? $fleetOperatorCommission->value : 0.00 / 100)), 2);
-                $gst_amount = number_format(($request->base_fare * ($gst / 100)), 2);
-                $tds_amount = number_format(($request->base_fare * ($tds / 100)), 2);
-                $companyPayment = $request->company_payment ?? '1';
-                if ($tds_amount != 0) {
-                    $companyPayment -= $tds_amount;
-                }
-                $settlement = [
-                    'fleet_operator_commission' => $fleetOperatorCommissionTotal,
-                    'company_commission' => $request->company_payment,
-                    'gst_amount' => $gst_amount,
-                    'tds_amount' => $tds_amount,
-                    'fleet_operator_total_payment' => $request->fleet_operator_payment,
-                ];
-                $paymentData['booking_id'] = $bookingDetails->id;
-                // $paymentData['transaction_id'] = $request->transaction_id;
-                $paymentData['customer_id'] = $request->customer_id;
-                $paymentData['date'] = date('Y-m-d');
-                $paymentData['amount'] = $request->part_payment;
-                $paymentData['amount_settlement'] = json_encode($settlement);
-                $paymentData['status'] = Type::UNPAID;
-                $paymentData['transfer_amount_status'] = Type::ACTIVE;
-                Log::info('Getting error of store booking details :', $paymentData);
-                Payment::create($paymentData);
+                Payment::create([
+                    'booking_id' => $bookingDetails->id,
+                    'customer_id' => $user->id,
+                    'date' => date('Y-m-d'),
+                    'amount' => FareBreakdown::rupees($fare->advance),
+                    'amount_settlement' => json_encode($fare->settlement()),
+                    'status' => Type::UNPAID,
+                    'transfer_amount_status' => Type::ACTIVE,
+                ]);
             }
 
 
@@ -125,36 +139,7 @@ class BookingController extends ResponseController
             //     $paymentData->save();
             // }
 
-            // Update User Details
-            $userDetails = User::find($user->id);
-
-            if (!empty($request->name)) {
-                $userDetails->name = $request->name;
-            }
-
-            if (!empty($request->gender)) {
-                $userDetails->gender = $request->gender;
-            }
-
-            if (!empty($request->country_id)) {
-                $userDetails->country_id = $request->country_id;
-            }
-
-            if (!empty($request->state_id)) {
-                $userDetails->state_id = $request->state_id;
-            }
-
-            if (!empty($request->phone_number)) {
-                $userDetails->phone_number = $request->phone_number;
-            }
-
-            $userDetails->save();
-
-
-            if (!$userDetails) {
-                DB::rollBack();
-                Log::info('Update user details failed ');
-            }
+            $this->updateCustomerProfile($user->id, $request, $gstDetails);
 
             DB::commit();
 
@@ -208,20 +193,58 @@ class BookingController extends ResponseController
     {
         try {
             $bookingId = $request->booking_id;
-            $status = $request->status;
-            DB::beginTransaction();
-            $bookingDetails = BookingDetail::where('booking_id', $bookingId)->first();
-            $bookingDetails->payment_status = $status ? Type::ACTIVE : Type::INACTIVE;
-            $bookingDetails->status = $status ? Type::PAID : Type::UNPAID;
-            $bookingDetails->save();
+            $status = (bool) $request->status;
+            $user = auth()->user();
 
+            $bookingDetails = BookingDetail::where('booking_id', $bookingId)->first();
+            if (!$bookingDetails || ($user && $bookingDetails->customer_id != $user->id)) {
+                return $this->error('Booking not found.');
+            }
             $paymentDetails = Payment::where('booking_id', $bookingDetails->id)->first();
-            $paymentDetails->status = $status ? Type::PAID : Type::UNPAID;
-            $paymentDetails->transaction_id = $request->transaction_id;
+            if (!$paymentDetails) {
+                return $this->error('Payment record not found for this booking.');
+            }
+
+            $remainingAmount = round((float) $bookingDetails->total_payment - (float) $bookingDetails->part_payment, 2);
+            $data = ['booking_id' => $bookingId, 'otp' => $bookingDetails->trip_otp, 'remaining_amount' => $remainingAmount];
+
+            // Already confirmed (e.g. by the gateway webhook or a retried call): don't repeat side effects.
+            if ($bookingDetails->payment_status == Type::ACTIVE) {
+                if ($bookingDetails->status == Type::UNPAID) {
+                    $bookingDetails->status = Type::PAID;
+                    $bookingDetails->save();
+                }
+                return $status ? $this->success($data, 'Booking successfully') : $this->error('Booking is already paid.');
+            }
+
+            if (!$status) {
+                return $this->error('Booking failed');
+            }
 
             $isCashfree = ($request->payment_gateway === 'cashfree')
                 || str_starts_with($request->transaction_id ?? '', 'cf_')
                 || str_starts_with($request->pg_order_id ?? '', 'CF_');
+
+            // Never trust the client's word that it paid: confirm with the gateway.
+            $verification = app(PaymentVerifier::class)->verify(
+                $bookingDetails,
+                $isCashfree ? 'cashfree' : 'razorpay',
+                $request->transaction_id,
+                $request->pg_order_id,
+                (float) $paymentDetails->amount,
+            );
+            if (!$verification['ok']) {
+                Log::warning("Payment confirmation rejected for {$bookingId}: {$verification['message']}");
+                return $this->error($verification['message']);
+            }
+
+            DB::beginTransaction();
+            $bookingDetails->payment_status = Type::ACTIVE;
+            $bookingDetails->status = Type::PAID;
+            $bookingDetails->save();
+
+            $paymentDetails->status = Type::PAID;
+            $paymentDetails->transaction_id = $request->transaction_id;
             $paymentDetails->payment_gateway = $isCashfree ? 'cashfree' : 'razorpay';
             if ($request->filled('pg_order_id')) {
                 $paymentDetails->pg_order_id = $request->pg_order_id;
@@ -245,8 +268,15 @@ class BookingController extends ResponseController
             $paymentDetails->save();
 
             DB::commit();
+
+            try {
+                app(InvoiceService::class)->receiptVoucher($bookingDetails->fresh(), $paymentDetails);
+            } catch (\Throwable $th) {
+                Log::error("Receipt voucher failed for {$bookingId}: " . $th->getMessage());
+            }
+
             if ($status) {
-                $user = auth()->user();
+                $user = $user ?? User::find($bookingDetails->customer_id);
                 try {
                     $title = 'Your Booking is Confirmed by Seema Cabs Goa!';
                     Mail::to($user->email)->send(new OrderMail($bookingDetails, $title));
@@ -392,7 +422,7 @@ class BookingController extends ResponseController
 
         $bookingDetail = BookingDetail::where('booking_id', $data['booking_id'])->first();
 
-        if (!$bookingDetail) {
+        if (!$bookingDetail || !$this->canAccessBooking($user, $bookingDetail)) {
             return $this->error('Booking not found');
         }
         if($bookingDetail->status == BookingEnum::CANCEL){
@@ -493,73 +523,58 @@ class BookingController extends ResponseController
                 return response()->json(['status' => false, 'user_status' => false, 'message' => 'Account Suspended. Contact Support.']);
             }
 
+            // Package price comes from the package's price table, never from the client.
+            $packagePrice = SightSeeingPackageCabPrice::where('sight_seeing_package_id', $request->sight_seeing_package_id)
+                ->where('city_id', $request->pickup_from)
+                ->first();
+            $priceColumn = [
+                Type::CAB_HATCHBACK_ID => 'hatchback_price',
+                Type::CAB_SEDAN_ID => 'sedan_price',
+                Type::CAB_SUV_ID => 'suv_price',
+            ][(int) $request->cab_type] ?? null;
+            if (!$packagePrice || !$priceColumn || empty($packagePrice->{$priceColumn})) {
+                return $this->error('This cab is not available for the selected package and pickup city.');
+            }
+
+            $fare = FareCalculator::fromDatabase()->package((float) $packagePrice->{$priceColumn}, now());
+            if (abs((float) $request->price - FareBreakdown::rupees($fare->total)) > 1) {
+                return $this->error('Prices have been updated. Please go back and select your cab again.');
+            }
+
+            $gstDetails = $this->businessGstDetails($request);
+            if (is_string($gstDetails)) {
+                return $this->error($gstDetails);
+            }
+
             DB::beginTransaction();
             $data = $request->validated();
             $bookingId = $this->createNewBookingId();
             $randomOtp = mt_rand(1000, 9999);
+            $data['customer_id'] = $user->id;
             $data['booking_date'] = date('Y-m-d');
             $data['booking_id'] = $bookingId;
             $data['status'] = Type::UNPAID;
             $data['payment_status'] = Type::INACTIVE;
             $data['pickup_date'] = Carbon::parse($data['pickup_date'])->format('Y-m-d');
-            $data['base_fare'] = $request->price;
-            $data['total_payment'] = $request->price;
             $data['trip_otp'] = $randomOtp;
+            $data = array_merge($data, $fare->bookingAttributes(), $gstDetails);
             Schema::disableForeignKeyConstraints();
             $bookingDetails = BookingDetail::create($data);
             Schema::enableForeignKeyConstraints();
             if ($bookingDetails) {
-                $fleetOperatorCommission = Environment::where('title', Type::PackageOperatorCommission)->first();
-                $fleetOperatorCommissionTotal = ($request->price * ($fleetOperatorCommission ? $fleetOperatorCommission->value : 0.00 / 100));
-                $fleetOperatortotalPayment = $fleetOperatorCommissionTotal - $request->price;
-                $settlement = [
-                    'fleet_operator_commission' => $fleetOperatorCommissionTotal,
-                    'company_commission' => $fleetOperatortotalPayment,
-                    'fleet_operator_total_payment' => $fleetOperatortotalPayment,
-                ];
-                $paymentData['booking_id'] = $bookingDetails->id;
-                // $paymentData['transaction_id'] = $request->transaction_id;
-                $paymentData['customer_id'] = $request->customer_id;
-                $paymentData['date'] = date('Y-m-d');
-                $paymentData['amount'] = $request->price;
-                $paymentData['amount_settlement'] = json_encode($settlement);
-                $paymentData['status'] = Type::UNPAID;
-                $paymentData['transfer_amount_status'] = Type::ACTIVE;
-                Log::info('Getting error of store booking details :', $paymentData);
-                Payment::create($paymentData);
+                Payment::create([
+                    'booking_id' => $bookingDetails->id,
+                    'customer_id' => $user->id,
+                    'date' => date('Y-m-d'),
+                    'amount' => FareBreakdown::rupees($fare->total),
+                    'amount_settlement' => json_encode($fare->settlement()),
+                    'status' => Type::UNPAID,
+                    'transfer_amount_status' => Type::ACTIVE,
+                ]);
             }
 
 
-            // Update User Details
-            $userDetails = User::find($user->id);
-
-            if (!empty($request->name)) {
-                $userDetails->name = $request->name;
-            }
-
-            if (!empty($request->gender)) {
-                $userDetails->gender = $request->gender;
-            }
-
-            if (!empty($request->country_id)) {
-                $userDetails->country_id = $request->country_id;
-            }
-
-            if (!empty($request->state_id)) {
-                $userDetails->state_id = $request->state_id;
-            }
-
-            if (!empty($request->phone_number)) {
-                $userDetails->phone_number = $request->phone_number;
-            }
-
-            $userDetails->save();
-
-
-            if (!$userDetails) {
-                DB::rollBack();
-                Log::info('Update user details failed ');
-            }
+            $this->updateCustomerProfile($user->id, $request, $gstDetails);
 
             DB::commit();
 
@@ -716,6 +731,10 @@ class BookingController extends ResponseController
          $user = Auth::user();
 
          $bookingDetail = BookingDetail::where('id', $id)->first();
+         if (!$bookingDetail || !$this->canAccessBooking($user, $bookingDetail)) {
+             return $this->error('Booking not found');
+         }
+         $bookingDetail->invoice_documents = $this->invoiceLinks($bookingDetail);
          $cabName = 'Hatchback';
          $bookingDetail->ac = "AC";
                 // if ($bookingDetail->type != null) {
@@ -776,5 +795,97 @@ class BookingController extends ResponseController
          } else {
              return $this->error([], "You can't delete this booking");
          }
+    }
+
+    /** Customers may only see/act on their own bookings; staff users keep full access. */
+    private function canAccessBooking($user, BookingDetail $booking): bool
+    {
+        if (!$user) {
+            return false;
+        }
+        if ($user instanceof User && (int) $user->type === Type::CUSTOMER) {
+            return (int) $booking->customer_id === (int) $user->id;
+        }
+
+        return true;
+    }
+
+    /** True if the client's quoted amounts are more than ₹1 off the server's. */
+    private function clientAmountsDiffer(Request $request, int $totalPaise, int $advancePaise): bool
+    {
+        $clientTotal = (float) $request->input('total_payment', 0);
+        $clientAdvance = (float) $request->input('part_payment', 0);
+
+        return abs($clientTotal - FareBreakdown::rupees($totalPaise)) > 1
+            || abs($clientAdvance - FareBreakdown::rupees($advancePaise)) > 1;
+    }
+
+    /**
+     * Optional business GST details for a B2B invoice.
+     *
+     * @return array|string  booking attributes, or an error message
+     */
+    private function businessGstDetails(Request $request): array|string
+    {
+        $gstin = Gstin::normalize($request->input('customer_gstin'));
+        if ($gstin === '') {
+            return [];
+        }
+        if (!Gstin::isValid($gstin)) {
+            return 'Please enter a valid 15-character GSTIN, or leave it empty.';
+        }
+
+        $legalName = trim((string) $request->input('customer_legal_name'));
+        $address = trim((string) $request->input('customer_billing_address'));
+        if ($legalName === '' || $address === '') {
+            return 'Please enter the registered business name and billing address for the GST invoice.';
+        }
+
+        return [
+            'customer_gstin' => $gstin,
+            'customer_legal_name' => mb_substr($legalName, 0, 191),
+            'customer_billing_address' => mb_substr($address, 0, 500),
+        ];
+    }
+
+    private function updateCustomerProfile(int $userId, Request $request, array $gstDetails): void
+    {
+        $userDetails = User::find($userId);
+        if (!$userDetails) {
+            return;
+        }
+
+        foreach (['name', 'gender', 'country_id', 'state_id', 'phone_number'] as $field) {
+            if (!empty($request->{$field})) {
+                $userDetails->{$field} = $request->{$field};
+            }
+        }
+
+        // Remember business GST details for the customer's next booking.
+        if ($gstDetails !== []) {
+            $userDetails->gstin = $gstDetails['customer_gstin'];
+            $userDetails->gst_legal_name = $gstDetails['customer_legal_name'];
+            $userDetails->gst_billing_address = $gstDetails['customer_billing_address'];
+        }
+
+        $userDetails->save();
+    }
+
+    /** Issued GST documents for a booking, with login-free signed links. */
+    private function invoiceLinks(BookingDetail $booking): array
+    {
+        return Invoice::where('booking_id', $booking->id)
+            ->where('status', Invoice::ISSUED)
+            ->orderBy('id')
+            ->get()
+            ->map(fn (Invoice $invoice) => [
+                'type' => $invoice->type,
+                'title' => $invoice->label(),
+                'number' => $invoice->number,
+                'date' => optional($invoice->issue_date)->format('d-m-Y'),
+                'total' => (float) $invoice->total,
+                'url' => $invoice->publicUrl(),
+            ])
+            ->all();
     }
 }

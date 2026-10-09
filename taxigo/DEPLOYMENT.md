@@ -190,6 +190,44 @@ Push to `main`, then click **Redeploy**, or enable Coolify's auto-deploy webhook
 The uploads volume, sessions volume, Firebase file and the MySQL database are
 kept between deploys.
 
+## 10. Scheduled tasks
+
+The app's scheduler drafts last month's OfinIT platform-fee invoice on the 1st
+at 06:00 IST (an admin reviews and issues it). In Coolify go to the app's
+**Scheduled Tasks → + Add**:
+
+| Name | Command | Frequency |
+|---|---|---|
+| Laravel scheduler | `php artisan schedule:run` | `* * * * *` |
+
+Without it, use **Admin → Invoices → Prepare draft** each month instead.
+
+## 11. Pricing, GST & invoicing (first-time setup)
+
+Release `pricing v2` adds database tables and columns. **Run the migrations
+right after deploying it**, after taking a database backup (section 6):
+
+```bash
+php artisan migrate --force
+```
+
+They move the old 20% "GST" setting into an internal **fare markup**, so
+customer prices don't change. GST itself starts **switched off**. Then, in the
+admin panel (super-admin login):
+
+1. **Settings → Business Profiles:** enter the legal name, GSTIN, PAN, address
+   and invoice prefix for **Seema Holidays** and **OfinIT Solutions Pvt. Ltd.**
+   Documents are saved as numberless drafts until a profile is complete.
+2. **Settings → Pricing:** fare markup (rides / packages), OfinIT platform fee
+   %, and the online advance %. Every change is logged.
+3. **Settings → GST** (after CA sign-off): SAC codes, rates, and the date-time
+   from which bookings are charged GST, then switch it on. Bookings made
+   before that moment are never recalculated. To keep customer totals the same
+   when GST starts, set the markup to 14.29% (for 20% markup + 5% GST).
+4. **Invoices:** customer receipt vouchers, tax invoices, refund vouchers and
+   credit notes are created automatically. Prepare, review and issue the
+   monthly OfinIT invoice here, and download GSTR-1 CSVs per business.
+
 ## Security notes
 
 - There are no web URLs that run Artisan commands; the old public `/clear`,

@@ -49,6 +49,7 @@
         <li class="pc-item {{ request()->query('status') === 'completed' ? 'active' : '' }}"><a class="pc-link" href="{{ route('admin.trips.index',['status'=>'completed']) }}">Completed trips</a></li>
         <li class="pc-item {{ request()->query('status') === 'cancel' ? 'active' : '' }}"><a class="pc-link" href="{{ route('admin.trips.index',['status'=> 'cancel']) }}">Cancelled Trips</a></li>
         <li class="pc-item {{ request()->query('status') === 'refund' ? 'active' : '' }}"><a class="pc-link" href="{{ route('admin.trips.index',['status'=> 'refund']) }}">Cancel & Refund</a></li>
+        <li class="pc-item {{ request()->query('status') === 'no_show' ? 'active' : '' }}"><a class="pc-link" href="{{ route('admin.trips.index',['status'=> 'no_show']) }}">No-show Trips</a></li>
         {{-- <li class="pc-item"><a class="pc-link" href="{{asset('/trip-management/driver-ratings')}}">Driver Ratings</a>
     </li> --}}
         <!-- <li class="pc-item"><a class="pc-link" href="{{ asset('/trip-management/driver-status') }}">Driver Status</a></li> -->
@@ -70,6 +71,9 @@
         <li class="pc-item"><a class="pc-link" href="{{asset('/accounting/tds-invoices')}}">TDS Invoices</a></li>
     </ul>
 </li> --}}
+@if (Auth()->user()->type == App\Enums\Type::ADMIN)
+    <li class="pc-item {{ request()->routeIs('admin.invoices.*') ? 'active' : '' }}"><a class="pc-link" href="{{ route('admin.invoices.index') }}"><span class="pc-micon"><i class="ph-duotone ph-receipt"></i></span><span class="pc-mtext">Invoices</span></a></li>
+@endif
 @if (Auth()->user()->type == App\Enums\Type::ADMIN)
     <!-- Advertisements -->
     <li class="pc-item pc-hasmenu">
@@ -187,14 +191,16 @@
         <li class="pc-item"><a class="pc-link" href="{{ route('admin.setting.companyDetails.index') }}">SaaS Company
                 Details</a></li>
         {{-- <li class="pc-item"><a class="pc-link" href="{{ route('admin.setting.sosNumbers') }}">SOS</a></li> --}}
-        <li class="pc-item"><a class="pc-link" href="{{ route('admin.setting.plateFormFee') }}">Transaction Fees</a>
+        <li class="pc-item"><a class="pc-link" href="{{ route('admin.setting.pricing') }}">Pricing</a></li>
+        <li class="pc-item"><a class="pc-link" href="{{ route('admin.setting.gst') }}">GST</a></li>
+        <li class="pc-item"><a class="pc-link" href="{{ route('admin.setting.businessProfiles') }}">Business Profiles</a></li>
+        <li class="pc-item"><a class="pc-link" href="{{ route('admin.setting.plateFormFee') }}">Commissions</a>
         </li>
         <li class="pc-item"><a class="pc-link" href="{{ route('admin.setting.paymentGateway.index') }}">Payment
                 Gateway
                 Keys</a>
         </li>
         @endif
-        <li class="pc-item"><a class="pc-link" href="{{ route('admin.setting.plateFormTax') }}">Tax</a></li>
         <li class="pc-item"><a class="pc-link" href="{{ route('admin.setting.smtpCred') }}">SMTP</a></li>
         {{-- @if (Auth()->user()->type == App\Enums\Type::ADMIN) --}}
         {{-- <li class="pc-item"><a class="pc-link" href="{{ route('admin.setting.index') }}">General Settings</a></li> --}}

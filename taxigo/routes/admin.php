@@ -19,6 +19,8 @@ use App\Http\Controllers\Admin\FleetOperatorController;
 use App\Http\Controllers\Admin\LocationController;
 use App\Http\Controllers\Admin\PaymentController;
 use App\Http\Controllers\Admin\RazorpayController;
+use App\Http\Controllers\Admin\BillingSettingsController;
+use App\Http\Controllers\Admin\InvoiceController;
 use App\Http\Controllers\Admin\Reports\FleetOperatorPaymentController;
 use App\Http\Controllers\Admin\Reports\PaymentReconciliationController;
 use App\Http\Controllers\Admin\ScreenPriceController;
@@ -112,6 +114,14 @@ Route::group(['prefix' => 'admin', 'middleware' => ['auth', 'TwoFa'], 'as' => 'a
         Route::post('/store-plat-form-tax', [SettingController::class, 'storePlateFormTax'])->name('storePlateFormTax');
 
         // SMTP
+        // Pricing (internal markup, platform fee, advance), GST, invoicing business profiles
+        Route::get('/pricing', [BillingSettingsController::class, 'pricing'])->name('pricing');
+        Route::post('/pricing', [BillingSettingsController::class, 'savePricing'])->name('savePricing');
+        Route::get('/gst', [BillingSettingsController::class, 'gst'])->name('gst');
+        Route::post('/gst', [BillingSettingsController::class, 'saveGst'])->name('saveGst');
+        Route::get('/business-profiles', [BillingSettingsController::class, 'profiles'])->name('businessProfiles');
+        Route::post('/business-profiles/{role}', [BillingSettingsController::class, 'saveProfile'])->name('saveBusinessProfile');
+
         Route::get('/smtp-cred', [SettingController::class, 'smtpCred'])->name('smtpCred');
         Route::post('/store-cred', [SettingController::class, 'storeSmtpCred'])->name('storeSmtpCred');
 
@@ -231,6 +241,8 @@ Route::group(['prefix' => 'admin', 'middleware' => ['auth', 'TwoFa'], 'as' => 'a
         Route::get('/change-driver', [TripManagementController::class, 'changeDriver'])->name('changeDriver');
         Route::get('/cancel-booking/{id}/{type}', [TripManagementController::class, 'cancelBooking'])->name('cancelBooking');
         Route::post('/refund-amount', [RazorpayController::class, 'refundAmount'])->name('refundAmount');
+        Route::post('/no-show/{id}', [TripManagementController::class, 'markNoShow'])->name('markNoShow');
+        Route::post('/no-show/{id}/undo', [TripManagementController::class, 'undoNoShow'])->name('undoNoShow');
         Route::post('/booking-detail', [TripManagementController::class, 'bookingDetail'])->name('bookingDetail');
         Route::post('/update-call-status', [TripManagementController::class, 'updateCallStatus'])->name('updateCallStatus');
     });
@@ -301,5 +313,16 @@ Route::group(['prefix' => 'admin', 'middleware' => ['auth', 'TwoFa'], 'as' => 'a
         Route::delete('/delete/{sightSeeingPackages}', [SightSeeingPackageController::class, 'delete'])->name('delete');
         Route::delete('/delete-package-image',[SightSeeingPackageController::class,'deletePackageImage'])->name('deletePackageImage');
         Route::delete('/delete-package-cab-price',[SightSeeingPackageController::class,'deletePackageCabPrice'])->name('deletePackageCabPrice');
+    });
+
+    // Accounting: GST documents, OfinIT platform-fee invoices, GSTR-1 export
+    Route::prefix('invoices')->name('invoices.')->group(function () {
+        Route::get('/', [InvoiceController::class, 'index'])->name('index');
+        Route::get('/gstr1', [InvoiceController::class, 'exportGstr1'])->name('gstr1');
+        Route::post('/platform-fee', [InvoiceController::class, 'generatePlatformFee'])->name('platformFee');
+        Route::post('/issue-drafts', [InvoiceController::class, 'issueDrafts'])->name('issueDrafts');
+        Route::get('/{invoice}', [InvoiceController::class, 'show'])->name('show');
+        Route::post('/{invoice}/issue', [InvoiceController::class, 'issue'])->name('issue');
+        Route::post('/{invoice}/paid', [InvoiceController::class, 'markPaid'])->name('markPaid');
     });
 });

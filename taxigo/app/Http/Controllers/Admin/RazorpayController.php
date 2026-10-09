@@ -100,6 +100,12 @@ class RazorpayController extends Controller
             $bookingPaymentDetails->status = Type::REFUND;
             $bookingPaymentDetails->save();
 
+            try {
+                app(\App\Services\Invoicing\InvoiceService::class)->refundVoucher($bookingDetails, (float) $bookingDetails->refund);
+            } catch (\Throwable $e) {
+                Log::error("Refund voucher failed for {$bookingDetails->booking_id}: " . $e->getMessage());
+            }
+
             //Send Notification to Customer
             $userFcmToken = UserFcmToken::where('user_id', $bookingDetails->customer_id)->first();
             $bookingId = $bookingDetails->booking_id;

@@ -33,7 +33,8 @@ class FinancialSummaryService
                 COALESCE(SUM(bd.total_payment), 0) as gross_amount,
                 COALESCE(SUM(bd.base_fare), 0) as base_fare,
                 COALESCE(SUM(bd.surge_price), 0) as surge_pricing,
-                COALESCE(SUM(bd.tax_amount), 0) as other_charges,
+                COALESCE(SUM(bd.markup_amount), 0) as other_charges,
+                COALESCE(SUM(CASE WHEN bd.pricing_version >= 2 THEN bd.tax_amount ELSE 0 END), 0) as gst_collected,
                 COALESCE(SUM(bd.part_payment), 0) as collected_online,
                 COALESCE(SUM(bd.cash_with_driver), 0) as cash_to_drivers
             ')
@@ -95,7 +96,9 @@ class FinancialSummaryService
             'gross_amount' => (float) $totals->gross_amount,
             'base_fare' => (float) $totals->base_fare,
             'surge_pricing' => (float) $totals->surge_pricing,
+            // Internal fare markup (v1 bookings stored it as "tax_amount").
             'other_charges' => (float) $totals->other_charges,
+            'gst_collected' => (float) $totals->gst_collected,
             'collected_online' => (float) $totals->collected_online,
             'seema_cabs_commission' => $seemaCabsCommission,
             'platform_commission' => $platformCommission,

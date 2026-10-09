@@ -15,6 +15,7 @@ use App\Http\Requests\Admin\Setting\StoreUpdateSosNumberRequest;
 use App\Http\Requests\Admin\Setting\Taxes\SaveUpdatePlatFormSmtpCredRequest;
 use App\Http\Requests\Admin\Setting\Taxes\SaveUpdatePlatFormTaxRequest;
 use App\Models\Environment;
+use App\Models\SettingChange;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -224,17 +225,12 @@ class SettingController extends Controller
     {
         try {
             foreach ($request->title as $key => $value) {
-                $slug = Str::slug($value);
-                $settingData = Environment::where('title', $slug)->first();
-                if (!empty($settingData)) {
-                    $settingData->value = $request->value[$key];
-                    $settingData->save();
-                } else {
-                    Environment::create([
-                        'title' => $slug,
-                        'value' => $request->value[$key]
-                    ]);
+                $newValue = $request->value[$key] ?? null;
+                if (!is_numeric($newValue) || $newValue < 0 || $newValue > 100) {
+                    return redirect()->back()->with('error', 'Each commission must be a number between 0 and 100.');
                 }
+                // Audited, like the Pricing and GST settings.
+                SettingChange::setEnvironment(Str::slug($value), (string) (0 + $newValue));
             }
             return redirect()->back()->with('success', 'Aggregator commission saved successfully.');
         } catch (\Exception $e) {
@@ -245,16 +241,17 @@ class SettingController extends Controller
 
     public function plateFormTax(Request $request)
     {
-        try {
-            $envoirements = Environment::get();
-            return view('settings.taxes', compact('envoirements'));
-        } catch (\Exception $e) {
-            Log::error('Getting error of display plat form taxes :' . $e->getMessage());
-            return redirect()->back()->with('error', 'Something went wrong,Please try again latter.');
-        }
+        // The old "GST %" here was really the fare markup. It now lives under
+        // Settings → Pricing (internal markup) and Settings → GST (real GST).
+        return redirect()->route('admin.setting.gst');
     }
 
     public function storePlateFormTax(Request $request)
+    {
+        return redirect()->route('admin.setting.gst');
+    }
+
+    private function legacyStorePlateFormTax(Request $request)
     {
         try {
             foreach ($request->title as $key => $value) {

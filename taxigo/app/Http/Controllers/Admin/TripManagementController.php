@@ -12,13 +12,18 @@ use App\Models\CabRate;
 use App\Models\City;
 use App\Models\Driver;
 use App\Models\Environment;
+use App\Models\Invoice;
 use App\Models\User;
 use App\Models\UserFcmToken;
+use App\Mail\InvoiceIssuedMail;
+use App\Services\Invoicing\InvoiceService;
 use App\Services\NotificationService;
 use Carbon\Carbon;
 use DateTime;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class TripManagementController extends Controller
 {
@@ -65,6 +70,8 @@ class TripManagementController extends Controller
                     $query = $query->where('status', 3);
                 } else if ($status == 'refund') {
                     $query = $query->where('status', 4)->where('refund', '!=', null);
+                } else if ($status == 'no_show') {
+                    $query = $query->where('status', BookingEnum::NO_SHOW);
                 } else {
                     $query = $query->where('status', 1);
                 }
@@ -259,6 +266,10 @@ class TripManagementController extends Controller
                 $message = 'completed';
             }
             $bookingDetail->save();
+
+            if ($bookingDetail->status == BookingEnum::COMPLETE) {
+                $this->sendCustomerInvoice($bookingDetail, fn (InvoiceService $invoices) => $invoices->completionInvoice($bookingDetail));
+            }
             if ($bookingDetail->status == BookingEnum::CANCEL) {
                 $bookingId = $bookingDetail->booking_id;
                 $pickupDateRaw = isset($bookingDetail->pickup_date) ? Carbon::parse($bookingDetail->pickup_date)->format('d M, Y') : 'N/A';
@@ -307,6 +318,95 @@ class TripManagementController extends Controller
         } catch (\Throwable $th) {
             Log::error('Getting error of cancel booking :' . $th->getMessage());
             return response()->json(['status' => false, 'Message' => 'Something went wrong, Please try again latter.']);
+        }
+    }
+
+    /**
+     * Admin-only no-show (D8): allowed once pickup time has passed for a paid,
+     * confirmed booking. Forfeits the online advance and issues a tax invoice
+     * for it (when the booking was priced with GST).
+     */
+    public function markNoShow(Request $request, $id)
+    {
+        $request->validate(['reason' => 'required|string|max:255']);
+
+        $booking = BookingDetail::find($id);
+        if (!$booking || $booking->status != Type::PAID || $booking->payment_status != Type::ACTIVE) {
+            return response()->json(['status' => false, 'Message' => 'Only paid, confirmed bookings can be marked as no-show.']);
+        }
+
+        $pickupAt = Carbon::parse($booking->getRawOriginal('pickup_date') . ' ' . $booking->pickup_time, 'Asia/Kolkata');
+        if (now('Asia/Kolkata')->lessThan($pickupAt)) {
+            return response()->json(['status' => false, 'Message' => 'A booking can be marked as no-show only after its pickup time (' . $pickupAt->format('d M Y, h:i A') . ').']);
+        }
+
+        $booking->status = BookingEnum::NO_SHOW;
+        $booking->no_show_at = now();
+        $booking->no_show_reason = $request->reason;
+        $booking->no_show_by = Auth::id();
+        $booking->save();
+
+        $this->sendCustomerInvoice($booking, fn (InvoiceService $invoices) => $invoices->noShowInvoice($booking));
+
+        try {
+            $title = 'Booking marked as no-show';
+            $body = "Booking {$booking->booking_id} was marked as a no-show. As per our cancellation policy, the advance paid is non-refundable.";
+            $data = ['booking_id' => $booking->booking_id];
+            $notification = new NotificationService();
+            $notification->storeUserNotification($booking->customer_id, $title, $body, $data, '');
+            $userFcmToken = UserFcmToken::where('user_id', $booking->customer_id)->first();
+            if ($userFcmToken) {
+                $notification->sendUserNotification($userFcmToken->token, $title, $body, $data, $booking->customer_id);
+            }
+        } catch (\Throwable $th) {
+            Log::warning('No-show notification failed: ' . $th->getMessage());
+        }
+
+        return response()->json(['status' => true, 'Message' => 'Booking marked as no-show.']);
+    }
+
+    /** Undo a no-show on the same day; any no-show invoice is reversed with a credit note. */
+    public function undoNoShow($id)
+    {
+        $booking = BookingDetail::find($id);
+        if (!$booking || $booking->status != BookingEnum::NO_SHOW) {
+            return response()->json(['status' => false, 'Message' => 'This booking is not marked as no-show.']);
+        }
+        if (!$booking->no_show_at || !Carbon::parse($booking->no_show_at)->isSameDay(now())) {
+            return response()->json(['status' => false, 'Message' => 'A no-show can only be undone on the same day it was marked.']);
+        }
+
+        try {
+            $invoice = Invoice::where('booking_id', $booking->id)->where('type', Invoice::TAX_INVOICE)
+                ->whereJsonContains('meta->kind', 'no_show')->latest('id')->first();
+            if ($invoice) {
+                app(InvoiceService::class)->creditNote($invoice, 'No-show reversed by admin');
+            }
+        } catch (\Throwable $th) {
+            Log::error("Credit note for undone no-show {$booking->booking_id} failed: " . $th->getMessage());
+            return response()->json(['status' => false, 'Message' => 'Could not reverse the no-show invoice: ' . $th->getMessage()]);
+        }
+
+        $booking->status = Type::PAID;
+        $booking->no_show_at = null;
+        $booking->no_show_reason = null;
+        $booking->no_show_by = null;
+        $booking->save();
+
+        return response()->json(['status' => true, 'Message' => 'No-show reversed.']);
+    }
+
+    /** Issue a customer GST document and email it; never blocks the trip action. */
+    private function sendCustomerInvoice(BookingDetail $booking, callable $make): void
+    {
+        try {
+            $invoice = $make(app(InvoiceService::class));
+            $user = User::find($booking->customer_id);
+            if ($invoice && $invoice->isIssued() && $user?->email) {
+                Mail::to($user->email)->send(new InvoiceIssuedMail($invoice));
+            }
+        } catch (\Throwable $th) {
+            Log::error("Invoice for booking {$booking->booking_id} failed: " . $th->getMessage());
         }
     }
 

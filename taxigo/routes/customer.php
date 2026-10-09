@@ -4,6 +4,7 @@ use App\Http\Controllers\Customer\AccountController;
 use App\Http\Controllers\Customer\AuthController;
 use App\Http\Controllers\Customer\BookingController;
 use App\Http\Controllers\Customer\PageController;
+use App\Http\Controllers\InvoiceDocumentController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -68,6 +69,7 @@ Route::prefix('app')->name('customer.')->group(function () {
         Route::get('notifications', [PageController::class, 'notifications'])->name('notifications');
         Route::get('discover/{package}', [PageController::class, 'discoverPackage'])->name('discover');
         Route::get('advertise', [PageController::class, 'advertise'])->name('advertise');
+        Route::get('invoices/{invoice}', [InvoiceDocumentController::class, 'customer'])->name('invoices.show');
 
         Route::prefix('actions')->name('actions.')->group(function () {
             Route::get('cab-list', [BookingController::class, 'cabList'])->name('cab-list');

@@ -13,6 +13,10 @@ class Kernel extends ConsoleKernel
     protected function schedule(Schedule $schedule): void
     {
         // $schedule->command('store:in-city-rides')->daily();
+
+        // Draft (not issue) last month's OfinIT platform-fee invoice for admin review.
+        // Requires `php artisan schedule:run` every minute (Coolify scheduled task).
+        $schedule->command('invoices:platform-fee')->monthlyOn(1, '06:00')->timezone('Asia/Kolkata');
     }
 
     /**

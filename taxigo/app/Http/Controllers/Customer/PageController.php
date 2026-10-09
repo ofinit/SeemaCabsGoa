@@ -206,7 +206,10 @@ class PageController extends Controller
             'gender' => $user->gender,
             'country_id' => $user->country_id,
             'state_id' => $user->state_id,
-        ] : [];
+            'gstin' => $user->gstin,
+            'gst_legal_name' => $user->gst_legal_name,
+            'gst_billing_address' => $user->gst_billing_address,
+        ] :[];
 
         $countries = Country::select('id', 'name')->orderBy('name')->get();
         $states = !empty($user->country_id)
@@ -236,6 +239,7 @@ class PageController extends Controller
                     'getDropTo' => fn($q) => $q->select('id', 'name'),
                 ])
                 ->where('id', $booking)
+                ->where('customer_id', Auth::guard('customer')->id())
                 ->first();
 
             if ($b) {
@@ -271,10 +275,15 @@ class PageController extends Controller
             $error = $e->getMessage();
         }
 
+        $invoices = $details
+            ? \App\Models\Invoice::where('booking_id', $details->id)->where('status', \App\Models\Invoice::ISSUED)->orderBy('id')->get()
+            : collect();
+
         return view('customer.trip.show', [
             'bookingId' => $booking,
             'booking' => $details,
             'error' => $error,
+            'invoices' => $invoices,
         ]);
     }
 
@@ -415,7 +424,10 @@ class PageController extends Controller
             'gender' => $user->gender,
             'country_id' => $user->country_id,
             'state_id' => $user->state_id,
-        ] : null;
+            'gstin' => $user->gstin,
+            'gst_legal_name' => $user->gst_legal_name,
+            'gst_billing_address' => $user->gst_billing_address,
+        ] :null;
 
         return view('customer.discover.show', [
             'packageId' => $package,

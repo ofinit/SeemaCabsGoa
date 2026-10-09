@@ -42,8 +42,44 @@ class BookingDetail extends BaseModel
         'refund',
         'status',
         'payment_status',
-        'call_status'
+        'call_status',
+        // pricing v2 snapshot (see FareBreakdown::bookingAttributes)
+        'pricing_version',
+        'fare_before_markup',
+        'markup_percent',
+        'markup_amount',
+        'taxable_amount',
+        'gst_rate',
+        'cgst_amount',
+        'sgst_amount',
+        'igst_amount',
+        'sac_code',
+        'platform_fee_percent',
+        'platform_fee_amount',
+        'customer_gstin',
+        'customer_legal_name',
+        'customer_billing_address',
+        'no_show_at',
+        'no_show_reason',
+        'no_show_by',
     ];
+
+    /** Bookings priced with GST applied (only possible from pricing v2). */
+    public function hasGst(): bool
+    {
+        return (int) $this->pricing_version >= 2 && (float) $this->gst_rate > 0;
+    }
+
+    /** v1 bookings stored the 20% markup in tax_amount; it was never GST. */
+    public function gstAmount(): float
+    {
+        return (int) $this->pricing_version >= 2 ? (float) $this->tax_amount : 0.0;
+    }
+
+    public function invoices()
+    {
+        return $this->hasMany(Invoice::class, 'booking_id');
+    }
 
     public function getBookingDateAttribute($value)
     {

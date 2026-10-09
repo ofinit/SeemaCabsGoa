@@ -8,6 +8,7 @@ use App\Models\BookingDetail;
 use App\Models\Payment;
 use App\Models\UserFcmToken;
 use App\Services\CashfreeService;
+use App\Services\Invoicing\InvoiceService;
 use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -112,10 +113,26 @@ class CashfreeWebhookController extends Controller
         }
 
         if ($booking && $booking->payment_status != 1) {
+            $expected = (float) (Payment::where('booking_id', $booking->id)->where('pg_order_id', $orderId)->value('amount')
+                ?? Payment::where('booking_id', $booking->id)->orderBy('id')->value('amount')
+                ?? $booking->part_payment);
+            if ($amount + 1 < $expected) {
+                Log::warning("Cashfree webhook: {$orderId} paid ₹{$amount} but booking {$booking->booking_id} expects ₹{$expected}; not confirming.");
+                return;
+            }
+
             $booking->update([
                 'payment_status' => 1,
+                'status' => $booking->status == Type::UNPAID ? Type::PAID : $booking->status,
             ]);
             Log::info("Booking {$booking->booking_id} marked as paid via Cashfree webhook.");
+
+            try {
+                $payment = Payment::where('booking_id', $booking->id)->where('pg_order_id', $orderId)->first();
+                app(InvoiceService::class)->receiptVoucher($booking->fresh(), $payment);
+            } catch (\Throwable $e) {
+                Log::error("Receipt voucher failed for {$booking->booking_id}: " . $e->getMessage());
+            }
         }
     }
 
@@ -145,6 +162,12 @@ class CashfreeWebhookController extends Controller
                     $booking->status = Type::REFUND;
                     $booking->refund = $refundAmount ?: $booking->refund;
                     $booking->save();
+
+                    try {
+                        app(InvoiceService::class)->refundVoucher($booking, (float) $booking->refund);
+                    } catch (\Throwable $e) {
+                        Log::error("Refund voucher failed for {$booking->booking_id}: " . $e->getMessage());
+                    }
 
                     // Notify customer
                     $userFcmToken = UserFcmToken::where('user_id', $booking->customer_id)->first();

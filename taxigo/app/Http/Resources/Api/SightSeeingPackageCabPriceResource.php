@@ -4,6 +4,8 @@ namespace App\Http\Resources\Api;
 
 use App\Enums\Type;
 use App\Models\Environment;
+use App\Services\Pricing\FareBreakdown;
+use App\Services\Pricing\FareCalculator;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -14,6 +16,23 @@ class SightSeeingPackageCabPriceResource extends JsonResource
      *
      * @return array<string, mixed>
      */
+    /**
+     * `price` is what the customer pays (internal markup + GST included), so
+     * existing apps that charge `price` stay correct; `fare` / `tax_amount`
+     * break it down. Booking re-calculates the same figures server-side.
+     */
+    private function amounts($basePrice): array
+    {
+        $fare = FareCalculator::fromDatabase()->package((float) $basePrice);
+
+        return [
+            'price' => FareBreakdown::display($fare->total),
+            'fare' => FareBreakdown::display($fare->fare),
+            'tax_amount' => FareBreakdown::display($fare->gst),
+            'gst_rate' => $fare->gstRate,
+        ];
+    }
+
     public function toArray(Request $request): array
     {
         $cabs = [];
@@ -27,7 +46,7 @@ class SightSeeingPackageCabPriceResource extends JsonResource
                 'baggage' => '2 Baggage',
                 'seat' => 4,
                 'ac' => 'Ac',
-                'price' => (string)round($this->hatchback_price),
+                ...$this->amounts($this->hatchback_price),
             );
         }
         if ($this->sedan_price) {
@@ -39,7 +58,7 @@ class SightSeeingPackageCabPriceResource extends JsonResource
                 'baggage' => '3 Baggage',
                 'seat' => 4,
                 'ac' => 'Ac',
-                'price' => (string)round($this->sedan_price),
+                ...$this->amounts($this->sedan_price),
             );
         }
         if ($this->suv_price) {
@@ -51,7 +70,7 @@ class SightSeeingPackageCabPriceResource extends JsonResource
                 'baggage' => '3 Baggage',
                 'seat' => 6,
                 'ac' => 'Ac',
-                'price' => (string)round($this->suv_price),
+                ...$this->amounts($this->suv_price),
             );
         }
         return $cabs;

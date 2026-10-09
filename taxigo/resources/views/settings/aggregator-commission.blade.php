@@ -44,7 +44,7 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <h5>Add Commission</h5>
+                    <h5>Commissions &amp; Fees</h5>
                 </div>
                 <div class="card-body">
                     <form class="aggregatorCommissionForm" method="post"
@@ -60,7 +60,7 @@
                         <div class="row">
                             <div class="col-lg-4 col-md-6">
                                 <div class="mb-3">
-                                    <label class="form-label" for="agreegator">Aggregator Commission</label>
+                                    <label class="form-label" for="agreegator">OfinIT Platform Fee — rides (%)</label>
                                     <div class="input-group ">
                                         <input type="hidden" name="title[]" value="aggregatorcommission" id="">
                                         @if (isset($envoirements) && count($envoirements) > 0)
@@ -140,7 +140,7 @@
                             </div>
                             <div class="col-lg-4 col-md-6">
                                 <div class="mb-3">
-                                    <label class="form-label" for="totalCommission">Total Commission</label>
+                                    <label class="form-label" for="totalCommission">Advance Paid Online — rides (% of total)</label>
                                     <div class="input-group ">
                                         <input type="hidden" name="title[]" value="totalCommission" id="">
                                         @if (isset($envoirements) && count($envoirements) > 0)
@@ -170,7 +170,7 @@
                             </div>
                             <div class="col-lg-4 col-md-6">
                                 <div class="mb-3">
-                                    <label class="form-label" for="packageAgreegator">Packages Aggregator Commission</label>
+                                    <label class="form-label" for="packageAgreegator">OfinIT Platform Fee — packages (%)</label>
                                     <div class="input-group ">
                                         <input type="hidden" name="title[]" value="packageaggregatorcommission" id="">
                                         @if (isset($envoirements) && count($envoirements) > 0)

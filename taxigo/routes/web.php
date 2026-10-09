@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\AuthController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\InvoiceDocumentController;
 use Illuminate\Support\Facades\Auth;
 
 /*
@@ -31,6 +32,9 @@ Route::redirect('terms', '/terms-and-conditions.html');
 Route::redirect('terms-of-service', '/terms-and-conditions.html');
 Route::redirect('cancellation-refund-policy', '/cancellation-refund-policy.html');
 Route::redirect('refund-policy', '/cancellation-refund-policy.html');
+
+// GST documents via signed, login-free links (emails and the mobile apps).
+Route::get('invoices/{invoice}', [InvoiceDocumentController::class, 'signed'])->middleware('signed')->name('invoices.public');
 
 // The Docker image copies the static marketing site into public/, so the root
 // URL serves its homepage. Without it (e.g. local dev) fall back to the legacy

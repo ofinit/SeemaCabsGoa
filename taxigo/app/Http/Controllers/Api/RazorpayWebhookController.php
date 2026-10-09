@@ -8,6 +8,7 @@ use App\Models\BookingDetail;
 use App\Models\Environment;
 use App\Models\Payment;
 use App\Models\UserFcmToken;
+use App\Services\Invoicing\InvoiceService;
 use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -115,6 +116,12 @@ class RazorpayWebhookController extends Controller
         $payment->save();
 
         Log::info("Razorpay refund.processed for {$razorpayPaymentId}: booking {$bookingDetail->booking_id} refund recorded as ₹{$amountRefunded} ({$refundStatus}).");
+
+        try {
+            app(InvoiceService::class)->refundVoucher($bookingDetail, (float) $amountRefunded);
+        } catch (\Throwable $e) {
+            Log::error("Refund voucher failed for {$bookingDetail->booking_id}: " . $e->getMessage());
+        }
 
         if ($alreadyRecorded) {
             // Already up to date from a prior delivery of this same event — skip re-notifying the customer.

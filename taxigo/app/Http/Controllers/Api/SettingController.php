@@ -6,6 +6,7 @@ use App\Enums\CustomerDetailsEnum;
 use App\Enums\Type;
 use App\Http\Controllers\Controller;
 use App\Models\Environment;
+use App\Services\Pricing\PricingSettings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -80,13 +81,15 @@ class SettingController extends ResponseController
             $data['fleet_operator_phone_two'] = CustomerDetailsEnum::FLEET_OPERATOR_PHONE_TWO;
             $data['fleet_operator_name'] = CustomerDetailsEnum::FLEET_OPERATOR_NAME;
             $data['fleet_operator_address'] = CustomerDetailsEnum::FLEET_OPERATOR_ADDRESS;
-            $data['additional_charges'] = [
-                'Tax',
+            // The fare is all-inclusive; "GST" is listed only while GST is charged.
+            $gstOn = PricingSettings::gstAppliesAt(PricingSettings::load(), now());
+            $data['additional_charges'] = array_values(array_filter([
+                $gstOn ? 'GST' : null,
                 'Airport Entry',
                 'Toll Charges',
                 'Driver Charges',
                 'All Covered!'
-            ];
+            ]));
 
             return $this->success($data, 'Setting details get successfully.');
         } catch (\Throwable $th) {

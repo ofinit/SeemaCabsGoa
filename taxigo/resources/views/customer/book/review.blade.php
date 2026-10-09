@@ -21,6 +21,8 @@
                 <div class="text-right">
                     <span class="text-[10px] font-bold uppercase tracking-wider text-muted block">Total Fare</span>
                     <span class="font-extrabold text-ink text-xl tabular-nums">&#8377;<span x-text="draft && draft.cab && draft.cab.full_payment"></span></span>
+                    <span x-show="gstAmount() > 0" style="display:none" class="text-[10px] text-muted block"
+                        x-text="'Fare ₹' + draft.cab.price + ' + GST ₹' + draft.cab.tax_amount"></span>
                 </div>
             </div>
         </div>
@@ -59,7 +61,11 @@
                 <ul x-show="tab === 'inclusions'" class="text-xs text-ink space-y-2">
                     <li class="flex items-center gap-2">
                         <span class="w-4 h-4 rounded-full bg-emerald-100 text-success flex items-center justify-center text-[10px] font-bold">✓</span>
-                        <span>State Taxes &amp; GST included</span>
+                        <span>State permit taxes included</span>
+                    </li>
+                    <li class="flex items-center gap-2" x-show="gstAmount() > 0" style="display:none">
+                        <span class="w-4 h-4 rounded-full bg-emerald-100 text-success flex items-center justify-center text-[10px] font-bold">✓</span>
+                        <span x-text="'GST @ ' + (draft ? draft.cab.gst_rate : '') + '% included in the total'"></span>
                     </li>
                     <li class="flex items-center gap-2">
                         <span class="w-4 h-4 rounded-full bg-emerald-100 text-success flex items-center justify-center text-[10px] font-bold">✓</span>
@@ -138,6 +144,8 @@
                 </div>
             </div>
         </div>
+
+        @include('customer.components.gst-invoice-fields')
 
         @include('customer.components.error-banner', ['model' => 'error'])
 
@@ -277,6 +285,21 @@
                 phone_number: !!initialUser.phone_number
             },
             profileLoaded: true,
+            gst: {
+                enabled: !!initialUser.gstin,
+                gstin: initialUser.gstin || '',
+                legal_name: initialUser.gst_legal_name || '',
+                address: initialUser.gst_billing_address || '',
+            },
+            gstAmount() { return this.draft && this.draft.cab ? Number(this.draft.cab.tax_amount || 0) : 0; },
+            gstPayload() {
+                if (!this.gst.enabled || !this.gst.gstin.trim()) return {};
+                return {
+                    customer_gstin: this.gst.gstin.trim(),
+                    customer_legal_name: this.gst.legal_name.trim(),
+                    customer_billing_address: this.gst.address.trim(),
+                };
+            },
             get allPrefilled() { return Object.values(this.prefilled).every(Boolean); },
             error: '', paying: false, confirmed: false, otp: '', bookingId: '',
             goBack() {
@@ -368,6 +391,10 @@
                     this.error = 'Please fill in your name, email and contact number.';
                     return;
                 }
+                if (this.gst.enabled && (!/^[0-9]{2}[A-Z0-9]{13}$/.test(this.gst.gstin.trim()) || !this.gst.legal_name.trim() || !this.gst.address.trim())) {
+                    this.error = 'For a GST invoice, enter a valid 15-character GSTIN, the registered business name and billing address — or untick the GST invoice option.';
+                    return;
+                }
                 this.paying = true;
                 try {
                     const [dd, mm, yyyy] = [this.draft.pickup_date.slice(8, 10), this.draft.pickup_date.slice(5, 7), this.draft.pickup_date.slice(0, 4)];
@@ -397,6 +424,7 @@
                         country_id: this.traveller.country_id || null,
                         state_id: this.traveller.state_id || null,
                         phone_number: this.traveller.phone_number,
+                        ...this.gstPayload(),
                     };
                     const bookingRes = await apiFetch('{{ route('customer.actions.bookings.store') }}', { method: 'POST', body: bookingPayload });
                     this.bookingId = bookingRes.data.booking_id;
@@ -407,12 +435,10 @@
                         const cfOrderRes = await apiFetch('{{ route('customer.actions.cashfree.create-order') }}', {
                             method: 'POST',
                             body: {
-                                amount: this.draft.cab.part_payment,
                                 booking_id: this.bookingId,
                                 name: this.traveller.name,
                                 email: this.traveller.email,
                                 phone: this.traveller.phone_number,
-                                fleet_operator_payment: this.draft.cab.fleet_operator_payment,
                             }
                         });
 
@@ -447,7 +473,7 @@
                         });
                     } else {
                         // Razorpay Modal Checkout
-                        const orderRes = await apiFetch('{{ route('customer.actions.create-order') }}', { method: 'POST', body: { amount: this.draft.cab.part_payment } });
+                        const orderRes = await apiFetch('{{ route('customer.actions.create-order') }}', { method: 'POST', body: { booking_id: this.bookingId } });
                         let paymentKey = this.paymentKey;
                         if (!paymentKey) {
                             const settingsRes = await apiFetch('{{ route('customer.actions.settings') }}');

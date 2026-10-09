@@ -69,9 +69,9 @@
                             <div class="text-right shrink-0">
                                 <span x-show="cab.surge_price > 0" class="status-badge status-badge--assigned mb-1 inline-block">Surge</span>
                                 <div class="font-extrabold text-ink text-xl tabular-nums leading-none">
-                                    &#8377;<span x-text="cab.price"></span>
+                                    &#8377;<span x-text="cab.full_payment || cab.price"></span>
                                 </div>
-                                <span class="text-[10px] text-muted block mt-0.5 font-medium">all-inclusive</span>
+                                <span class="text-[10px] text-muted block mt-0.5 font-medium" x-text="Number(cab.tax_amount) > 0 ? 'incl. GST' : 'all-inclusive'"></span>
                             </div>
                         </div>
 

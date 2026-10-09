@@ -138,13 +138,14 @@
                     <div class="card-core p-4">
                         <h3 class="font-bold text-ink text-sm mb-3">Fare Breakdown</h3>
                         <div class="space-y-2 text-xs">
+                            {{-- v1 bookings stored the internal markup as "tax"; show their all-inclusive fare only. --}}
                             <div class="flex justify-between text-muted">
-                                <span>Base Fare</span>
-                                <span class="font-semibold text-ink tabular-nums" x-text="'₹' + booking.base_fare"></span>
+                                <span>Fare (all-inclusive)</span>
+                                <span class="font-semibold text-ink tabular-nums" x-text="'₹' + (booking.pricing_version >= 2 ? booking.base_fare : booking.total_payment)"></span>
                             </div>
-                            <div class="flex justify-between text-muted" x-show="parseFloat(booking.surge_price) > 0">
-                                <span>Surge / Season Adjustment</span>
-                                <span class="font-semibold text-ink tabular-nums" x-text="'₹' + booking.surge_price"></span>
+                            <div class="flex justify-between text-muted" x-show="booking.pricing_version >= 2 && parseFloat(booking.tax_amount) > 0" style="display:none">
+                                <span x-text="'GST @ ' + parseFloat(booking.gst_rate) + '% (CGST + SGST)'"></span>
+                                <span class="font-semibold text-ink tabular-nums" x-text="'₹' + booking.tax_amount"></span>
                             </div>
                             <div class="flex justify-between items-center font-bold text-sm text-ink border-t border-sand/60 pt-2.5">
                                 <span>Total Trip Fare</span>
@@ -162,8 +163,29 @@
                     </div>
                 </div>
 
+                @if ($invoices->isNotEmpty())
+                    <!-- GST DOCUMENTS -->
+                    <div class="card-bezel p-1.5">
+                        <div class="card-core p-4">
+                            <h3 class="font-bold text-ink text-sm mb-3">Invoices &amp; receipts</h3>
+                            <div class="space-y-2 text-xs">
+                                @foreach ($invoices as $invoice)
+                                    <a href="{{ route('customer.invoices.show', $invoice) }}" target="_blank" rel="noopener"
+                                       class="flex items-center justify-between gap-3 p-2.5 rounded-xl border border-black/[0.06] hover:border-gold">
+                                        <span>
+                                            <span class="font-semibold text-ink block">{{ $invoice->label() }}</span>
+                                            <span class="text-muted">{{ $invoice->number }} &middot; {{ optional($invoice->issue_date)->format('d M Y') }}</span>
+                                        </span>
+                                        <span class="font-bold text-ink tabular-nums">&#8377;{{ number_format((float) $invoice->total, 2) }}</span>
+                                    </a>
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+                @endif
+
                 <!-- SWIPE TO CANCEL -->
-                <template x-if="booking.status != 3 && booking.status != 4">
+                <template x-if="booking.status != 3 && booking.status != 4 && booking.status != 5">
                     <div x-data="swipeToConfirm()" x-on:swipe-confirmed.window="cancelRide" class="pt-2">
                         <div class="relative h-14 rounded-full bg-red-50 border border-danger/25 overflow-hidden shadow-inner" x-ref="track">
                             <p class="absolute inset-0 flex items-center justify-center text-danger text-xs font-bold uppercase tracking-wider pointer-events-none select-none">

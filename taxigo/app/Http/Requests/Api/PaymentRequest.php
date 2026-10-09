@@ -22,7 +22,8 @@ class PaymentRequest extends FormRequest
     public function rules(): array
     {
         return [
-           'amount' => 'required',
+           'amount' => 'required_without:booking_id|nullable|numeric|min:1',
+           'booking_id' => 'nullable|string|max:40',
         ];
     }
 }

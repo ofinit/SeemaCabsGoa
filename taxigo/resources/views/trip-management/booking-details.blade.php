@@ -996,6 +996,11 @@
                                 'complete');
                             completeButton =
                                 `<a href="#!" class="btn btn-sm btn-light-success me-1 completeBooking" data-type="${row.cab_type}" data-url="${completeUrl}"><i class="ti ti-circle-check"></i></a>`;
+                            completeButton +=
+                                `<a href="#!" class="btn btn-sm btn-light-warning me-1 markNoShow" title="Mark as no-show" data-id="${row.id}" data-booking="${row.booking_id}"><i class="ti ti-user-off"></i></a>`;
+                        }
+                        if (status == 5) {
+                            statusHtml = `<span class="btn btn-sm btn-light-warning" style="cursor: default;">No-show</span> <a href="#!" class="btn btn-sm btn-light-secondary undoNoShow" data-id="${row.id}">Undo</a>`;
                         }
                         if (status == 0) {
                             statusHtml = `<a href="#!" class="btn btn-sm btn-no-dark-hover me-1 assignDriver" data-type="${row.cab_type}" data-booking="${row.id}" data-bs-toggle="modal"
@@ -1229,6 +1234,64 @@
                         if (res.status) {
                             $('.changeDriverModel').html(res.html);
                         }
+                    }
+                });
+            });
+
+            // No-show (admin only, after pickup time): forfeits the advance and issues its invoice.
+            $(document).on('click', '.markNoShow', function(e) {
+                e.preventDefault();
+                var id = $(this).data('id');
+                var bookingId = $(this).data('booking');
+                Swal.fire({
+                    title: "Mark " + bookingId + " as no-show?",
+                    text: "The customer's online advance will be forfeited and invoiced, and they will be notified.",
+                    input: "text",
+                    inputPlaceholder: "Reason (e.g. customer unreachable at pickup)",
+                    inputValidator: (value) => !value && "Please enter a reason.",
+                    icon: "warning",
+                    showCancelButton: true,
+                    confirmButtonColor: "#d33",
+                    cancelButtonColor: "#3085d6",
+                    confirmButtonText: "Mark no-show"
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        $.ajax({
+                            url: '{{ route('admin.trips.markNoShow', ':id') }}'.replace(':id', id),
+                            type: "POST",
+                            data: { reason: result.value, _token: '{{ csrf_token() }}' },
+                            success: function(response) {
+                                Swal.fire(response.status ? "Done" : "Not allowed", response.Message, response.status ? "success" : "error")
+                                    .then(function() { if (response.status) location.reload(); });
+                            },
+                            error: function() {
+                                Swal.fire("Error!", "Could not mark as no-show.", "error");
+                            }
+                        });
+                    }
+                });
+            });
+
+            $(document).on('click', '.undoNoShow', function(e) {
+                e.preventDefault();
+                var id = $(this).data('id');
+                Swal.fire({
+                    title: "Undo no-show?",
+                    text: "Allowed only on the same day. Any no-show invoice will be reversed with a credit note.",
+                    icon: "warning",
+                    showCancelButton: true,
+                    confirmButtonText: "Undo"
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        $.ajax({
+                            url: '{{ route('admin.trips.undoNoShow', ':id') }}'.replace(':id', id),
+                            type: "POST",
+                            data: { _token: '{{ csrf_token() }}' },
+                            success: function(response) {
+                                Swal.fire(response.status ? "Done" : "Not allowed", response.Message, response.status ? "success" : "error")
+                                    .then(function() { if (response.status) location.reload(); });
+                            }
+                        });
                     }
                 });
             });

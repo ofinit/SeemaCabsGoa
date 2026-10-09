@@ -74,6 +74,7 @@
                             </template>
                         </div>
 
+                        @include('customer.components.gst-invoice-fields')
                         @include('customer.components.error-banner', ['model' => 'error'])
 
                         <button @click="payNow" class="btn-primary w-full" :disabled="!canPay || paying">
@@ -126,6 +127,16 @@
             today: new Date().toISOString().slice(0, 10),
             namePrefilled: !!(initialAccount && initialAccount.name),
             accountData: initialAccount,
+            gst: {
+                enabled: !!(initialAccount && initialAccount.gstin),
+                gstin: (initialAccount && initialAccount.gstin) || '',
+                legal_name: (initialAccount && initialAccount.gst_legal_name) || '',
+                address: (initialAccount && initialAccount.gst_billing_address) || '',
+            },
+            gstPayload() {
+                if (!this.gst.enabled || !this.gst.gstin.trim()) return {};
+                return { customer_gstin: this.gst.gstin.trim(), customer_legal_name: this.gst.legal_name.trim(), customer_billing_address: this.gst.address.trim() };
+            },
             get canPay() { return this.cityId && this.pickupDate && this.pickupTime && this.name && this.selectedCabType; },
             async load() {
                 if (this.pkg && this.cities.length) return;
@@ -170,6 +181,7 @@
                         pickup_time: this.pickupTime,
                         price: cab.price,
                         name: this.name,
+                        ...this.gstPayload(),
                     }});
                     this.bookingId = bookingRes.data.booking_id;
                     this.otp = bookingRes.data.otp;
@@ -181,7 +193,6 @@
                         const cfOrderRes = await apiFetch('{{ route('customer.actions.cashfree.create-order') }}', {
                             method: 'POST',
                             body: {
-                                amount: cab.price,
                                 booking_id: this.bookingId,
                                 name: this.name,
                             }
@@ -211,7 +222,7 @@
                             }
                         });
                     } else {
-                        const orderRes = await apiFetch('{{ route('customer.actions.create-order') }}', { method: 'POST', body: { amount: cab.price } });
+                        const orderRes = await apiFetch('{{ route('customer.actions.create-order') }}', { method: 'POST', body: { booking_id: this.bookingId } });
 
                         const rzp = new Razorpay({
                             key: settingsRes.data.payment_key,

@@ -344,18 +344,17 @@
                 </tr>
             </thead>
             <tbody>
+                {{-- The internal markup is inside the fare; only real GST is shown separately. --}}
                 <tr>
-                    <td>Base Fare {{ $bookingDetails->cabRate ? $bookingDetails->cabRate->base_km : 0 }} Kms</td>
-                    <td style="text-align: right;">{{ getCurrencySign() . $bookingDetails->base_fare ?? 0.0 }}</td>
+                    <td>Fare (all-inclusive){{ $bookingDetails->cabRate ? ', ' . $bookingDetails->cabRate->base_km . ' Kms' : '' }}</td>
+                    <td style="text-align: right;">{{ getCurrencySign() . ((int) $bookingDetails->pricing_version >= 2 ? $bookingDetails->base_fare : $bookingDetails->total_payment) }}</td>
                 </tr>
-                <tr>
-                    <td>Surge Charges</td>
-                    <td style="text-align: right;">{{ getCurrencySign() . $bookingDetails->surge_price ?? 0.0 }}</td>
-                </tr>
-                <tr>
-                    <td>Tax & Other Charges</td>
-                    <td style="text-align: right;">{{ getCurrencySign() . $bookingDetails->tax_amount ?? 0.0 }}</td>
-                </tr>
+                @if ($bookingDetails->hasGst())
+                    <tr>
+                        <td>GST @ {{ (float) $bookingDetails->gst_rate }}% (CGST {{ getCurrencySign() . $bookingDetails->cgst_amount }} + SGST {{ getCurrencySign() . $bookingDetails->sgst_amount }})</td>
+                        <td style="text-align: right;">{{ getCurrencySign() . $bookingDetails->tax_amount }}</td>
+                    </tr>
+                @endif
                 <tr>
                     <td>Total Amount</td>
                     <td style="text-align: right;">{{ getCurrencySign() . $bookingDetails->total_payment ?? 0.0 }}</td>

@@ -44,8 +44,8 @@
 </style>
 @php
     $base_fare = isset($bookingDetail->base_fare) ? getCurrencySign(). number_format(($bookingDetail->base_fare),2) : '--';
-    $balance_amount = isset($bookingDetail->part_payment) && isset($bookingDetail->base_fare) ? getCurrencySign(). number_format((($bookingDetail->total_payment + $bookingDetail->tax_amount) - $bookingDetail->part_payment),2) : '--';
-    $total_amount = isset($bookingDetail->total_payment) ? getCurrencySign(). number_format($bookingDetail->total_payment + $bookingDetail->tax_amount,2 ) : '--' ;
+    $balance_amount = isset($bookingDetail->part_payment) && isset($bookingDetail->base_fare) ? getCurrencySign(). number_format(($bookingDetail->total_payment - $bookingDetail->part_payment),2) : '--';
+    $total_amount = isset($bookingDetail->total_payment) ? getCurrencySign(). number_format($bookingDetail->total_payment,2 ) : '--' ;
     $part_payment = isset($bookingDetail->part_payment) ? getCurrencySign().$bookingDetail->part_payment : '--' ;
 
 @endphp
@@ -306,8 +306,17 @@
                     </div>
                     <div class="col-md-4">
                         <div>
-                            <p class="label-heading">Other Charges</p>
-                            <p class="label-data">{{ isset($bookingDetail->tax_amount) ? getCurrencySign(). $bookingDetail->tax_amount : '--' }}</p>
+                            {{-- v1 bookings stored the internal markup in tax_amount; v2 stores GST there. --}}
+                            <p class="label-heading">Fare Markup (internal)</p>
+                            <p class="label-data">{{ isset($bookingDetail->markup_amount) ? getCurrencySign(). $bookingDetail->markup_amount . ((int) $bookingDetail->pricing_version >= 2 && $bookingDetail->markup_percent !== null ? ' (' . (float) $bookingDetail->markup_percent . '%)' : '') : '--' }}</p>
+                        </div>
+                        <div>
+                            <p class="label-heading">GST</p>
+                            <p class="label-data">{{ $bookingDetail->hasGst() ? getCurrencySign() . $bookingDetail->tax_amount . ' (' . (float) $bookingDetail->gst_rate . '%)' : 'Not charged' }}</p>
+                        </div>
+                        <div>
+                            <p class="label-heading">OfinIT Platform Fee</p>
+                            <p class="label-data">{{ $bookingDetail->platform_fee_amount !== null ? getCurrencySign() . $bookingDetail->platform_fee_amount : '--' }}</p>
                         </div>
                          <div>
                             <p class="label-heading">Refund</p>

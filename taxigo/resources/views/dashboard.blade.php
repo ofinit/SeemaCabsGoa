@@ -90,9 +90,9 @@
         <p class="fin-sub">{{ $summary['surge_pricing'] > 0 ? 'Surge charges collected' : 'No surge bookings recorded yet' }}</p>
     </div>
     <div class="fin-card fin-c4">
-        <p class="fin-label">Other Charges</p>
+        <p class="fin-label">Fare Markup</p>
         <p class="fin-value">{{ $fmt($summary['other_charges']) }}</p>
-        <p class="fin-sub">Tax charged on base fare</p>
+        <p class="fin-sub">Internal markup in fares &middot; GST {{ $fmt($summary['gst_collected'] ?? 0) }}</p>
     </div>
 
     <div class="fin-card fin-c5">
