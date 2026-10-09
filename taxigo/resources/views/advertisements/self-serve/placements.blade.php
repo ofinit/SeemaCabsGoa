@@ -64,6 +64,11 @@
                                     <option value="1" @selected($settings[$key] === '1')>Yes — advertisers can book</option>
                                     <option value="0" @selected($settings[$key] === '0')>No — paused</option>
                                 </select>
+                            @elseif ($key === AdSettings::SECOND_APPROVAL)
+                                <select class="form-select form-select-sm" name="{{ $key }}">
+                                    <option value="0" @selected($settings[$key] === '0')>No — one admin approves (risky ads are highlighted)</option>
+                                    <option value="1" @selected($settings[$key] === '1')>Yes — a second, different admin must also approve</option>
+                                </select>
                             @else
                                 <input class="form-control form-control-sm" name="{{ $key }}" value="{{ old($key, $settings[$key]) }}">
                             @endif
@@ -78,10 +83,10 @@
             <form method="POST" action="{{ route('admin.advertisements.selfServe.categories.save') }}" class="card">
                 @csrf
                 <div class="card-header"><h5 class="mb-0">Advertiser categories</h5>
-                    <p class="small text-muted mb-0">The tier sets the price. "Two admins" categories need a second admin's approval.</p></div>
+                    <p class="small text-muted mb-0">The tier sets the price. "High risk" categories are highlighted for the reviewer (and need a second admin if that setting is on).</p></div>
                 <div class="card-body p-0">
                     <table class="table table-sm align-middle mb-0">
-                        <thead><tr><th>Category</th><th>Tier</th><th>Licence</th><th>Two admins</th><th>Active</th></tr></thead>
+                        <thead><tr><th>Category</th><th>Tier</th><th>Licence</th><th>High risk</th><th>Active</th></tr></thead>
                         <tbody>
                             @foreach ($categories as $c)
                                 <tr>

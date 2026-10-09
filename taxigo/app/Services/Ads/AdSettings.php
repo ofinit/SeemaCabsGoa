@@ -20,6 +20,7 @@ class AdSettings
     public const DISCOUNT_14 = 'ads_discount_14_percent';
     public const DISCOUNT_30 = 'ads_discount_30_percent';
     public const HOLD_MINUTES = 'ads_hold_minutes';
+    public const SECOND_APPROVAL = 'ads_second_approval';
 
     public const DEFAULTS = [
         self::ENABLED => '1',
@@ -32,6 +33,7 @@ class AdSettings
         self::DISCOUNT_14 => '10',
         self::DISCOUNT_30 => '20',
         self::HOLD_MINUTES => '15',
+        self::SECOND_APPROVAL => '0',
     ];
 
     public const LABELS = [
@@ -45,6 +47,7 @@ class AdSettings
         self::DISCOUNT_14 => 'Discount for 14+ days (%)',
         self::DISCOUNT_30 => 'Discount for 30+ days (%)',
         self::HOLD_MINUTES => 'Slot hold while paying (minutes)',
+        self::SECOND_APPROVAL => 'Casino and flagged ads need a second admin (1 = yes, 0 = no)',
     ];
 
     public static function load(): array

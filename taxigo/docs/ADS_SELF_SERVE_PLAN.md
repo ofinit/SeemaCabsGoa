@@ -551,5 +551,7 @@ unchanged API and never receive the new PWA-only shapes (P2, P12, P13).
 
 **Operations:** add the Coolify volume `/var/www/html/storage/app/ads`
 (licences and original images, private) and keep the scheduler running.
-Two admin accounts are needed for casino ads and flagged ads.
+The two-admin rule for casino and flagged ads is a setting, **off by
+default** (one admin approves; high-risk ads are highlighted on the review
+page). Turn it on in Placements & Pricing once there are two reviewers.
 

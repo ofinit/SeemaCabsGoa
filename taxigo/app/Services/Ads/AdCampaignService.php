@@ -224,7 +224,7 @@ class AdCampaignService
                 'status' => AdCampaign::PENDING_PAYMENT,
                 'hold_expires_at' => now()->addMinutes((int) AdSettings::get(AdSettings::HOLD_MINUTES)),
                 'auto_flags' => $flags ?: null,
-                'needs_second_approval' => (bool) optional($advertiser->category)->second_approval || !empty($flags),
+                'needs_second_approval' => self::needsSecondApproval($advertiser->category, $flags),
             ])->save();
 
             return $campaign->fresh(['items.placement', 'advertiser']);
@@ -293,13 +293,23 @@ class AdCampaignService
             'first_approved_by' => null,
             'first_approved_at' => null,
             'auto_flags' => $flags ?: null,
-            'needs_second_approval' => (bool) optional($campaign->advertiser->category)->second_approval || !empty($flags),
+            'needs_second_approval' => self::needsSecondApproval($campaign->advertiser->category, $flags),
         ])->save();
 
         return $campaign;
     }
 
-    /** Automated checks (plan §10) — they never block; they require a second admin. */
+    /**
+     * Two-admin rule (plan §11) — only when switched on in the ad settings.
+     * Off by default: one admin approves, and high-risk ads are highlighted.
+     */
+    public static function needsSecondApproval(?AdCategory $category, array $flags): bool
+    {
+        return AdSettings::get(AdSettings::SECOND_APPROVAL) === '1'
+            && ((bool) optional($category)->second_approval || !empty($flags));
+    }
+
+    /** Automated checks (plan §10) — they never block; they are shown to the reviewer. */
     public function autoFlags(AdCampaign $campaign): array
     {
         $flags = [];

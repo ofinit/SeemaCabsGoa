@@ -77,6 +77,7 @@
                                         <td>
                                             <span class="badge bg-light-secondary">{{ $campaign->displayStatus() }}</span>
                                             @if ($campaign->needs_second_approval)<span class="badge bg-light-warning">2 admins</span>@endif
+                                            @if ($campaign->advertiser->category?->second_approval)<span class="badge bg-light-warning">high risk</span>@endif
                                             @if ($campaign->auto_flags)<span class="badge bg-light-danger" title="{{ implode('; ', $campaign->auto_flags) }}">flagged</span>@endif
                                         </td>
                                         <td class="small">

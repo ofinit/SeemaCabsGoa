@@ -31,6 +31,11 @@
     <div class="row">
         <div class="col-12">@include('layouts.message')</div>
 
+        @if ($category && $category->second_approval)
+            <div class="col-12">
+                <div class="alert alert-warning"><strong>High-risk category ({{ $category->name }}).</strong> Check the category rules carefully: {{ $category->rules }}</div>
+            </div>
+        @endif
         @if ($campaign->auto_flags)
             <div class="col-12">
                 <div class="alert alert-warning"><strong>Automated checks flagged:</strong> {{ implode(' · ', $campaign->auto_flags) }}</div>

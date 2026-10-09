@@ -275,6 +275,7 @@ class AdCampaignController extends Controller
         $this->authorizeAdmin();
         $rules = [
             AdSettings::ENABLED => 'required|in:0,1',
+            AdSettings::SECOND_APPROVAL => 'required|in:0,1',
             AdSettings::SEEMA_PERCENT => 'required|numeric|min:0|max:100',
             AdSettings::GST_RATE => 'required|numeric|min:0|max:28',
             AdSettings::SAC_SEEMA => 'nullable|digits_between:4,8',
