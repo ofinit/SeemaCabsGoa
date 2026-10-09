@@ -27,6 +27,19 @@ class Handler extends ExceptionHandler
             //
         });
 
+        // 419 (CSRF token mismatch, usually an expired session or a form left
+        // open across a deploy): send the user back to the form with their
+        // input and a clear message instead of a bare "Page Expired" screen.
+        $this->renderable(function (\Symfony\Component\HttpKernel\Exception\HttpException $e, $request) {
+            if ($e->getStatusCode() !== 419 || $request->expectsJson() || $request->is('api/*')) {
+                return null;
+            }
+
+            return redirect()->back()
+                ->withInput($request->except(['_token', 'password', 'current_password', 'old_password', 'new_password', 'confirm_password']))
+                ->with('error', 'Your session expired, so the form was not saved. Please check the details and submit again.');
+        });
+
         $this->renderable(function (\Symfony\Component\HttpKernel\Exception\NotFoundHttpException $e, $request) {
             if ($request->expectsJson() || $request->is('api/*')) {
                 return null;
