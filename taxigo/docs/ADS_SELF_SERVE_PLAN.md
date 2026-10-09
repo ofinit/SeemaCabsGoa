@@ -185,6 +185,80 @@ Every transition is written to an audit log.
 
 ---
 
+## 4A. PWA submission, admin approval, slots, pricing & expiry (rev 2 scope)
+
+Builds on the existing admin ad module (admin-created ads, active / expired
+lists with renew, `screen_prices` per screen per day) and replaces the static
+"pending ads" mock-up.
+
+### Advertisers submit ads from the PWA
+- **Entry:** the PWA **Advertise** page (`/app/advertise`) gets **"Create an
+  ad"**; the WhatsApp contact stays as "Need help?". Any logged-in customer can
+  advertise; on the first ad they add business details (business name,
+  contact, optional GSTIN + billing address), stored as their advertiser
+  profile and reused.
+- **Mobile-first wizard:**
+  1. **Placement(s):** cards with a screenshot of where the ad appears, its
+     shape, price per day and availability.
+  2. **Dates:** calendar with sold-out days greyed out; minimum 1 day.
+  3. **Creative:** upload, then crop to the placement's shape (§5); one crop per
+     selected placement. Link type: website / WhatsApp / call.
+  4. **Review & pay:** placements × days, any discount, **GST 18%** (§6A),
+     total → Seema Holidays' gateway with OfinIT's split (§6). The selected
+     slots are **held for 15 minutes** while paying.
+  5. Status becomes **In review**; the advertiser gets a push + email.
+- **My Ads** (PWA): each ad with status (In review → Approved / Scheduled →
+  Live → Expired, or Rejected with reason + refund status), impressions,
+  clicks, CTR, invoice download, **Renew / Extend**, and **Edit & resubmit**
+  after a rejection (no new payment).
+
+### Admin approval (mandatory)
+- **Admin → Advertisements → Pending approval:** creative previewed inside the
+  real placement frame, advertiser and business details, landing link (checked
+  for HTTPS and reachability), dates, amount paid.
+- **Approve** → scheduled or live, depending on its dates. **Reject** with a
+  reason code (shown to the advertiser) → **automatic full refund** with
+  OfinIT's split reversed, credit notes, notification. **Request changes** →
+  advertiser edits and resubmits without paying again.
+- **Nothing is served until it is paid *and* approved** (fixes today's
+  behaviour of ignoring `status`). Admin-created ads for offline sales go
+  through the same statuses, flagged "offline".
+- **Review SLA 24 h.** If approval comes after the start date, the end date
+  moves forward by the delay, so the advertiser still gets every paid day.
+- Every approval / rejection is audit-logged with the admin's name.
+
+### Slots & placement management
+- **Admin → Advertisements → Placements** (extends `screen_prices`): name,
+  screen, image shape (ratio + minimum size), **price per day**, **slots**
+  (maximum ads shown in rotation at once, e.g. 5), platforms, active on/off,
+  sample screenshot. Fixes the swapped screen 3 / 8 titles.
+- **Availability:** a day is sold out for a placement when approved + in-review
+  + held ads reach its slots. Sold-out days can't be booked; admins see a
+  per-placement calendar of bookings.
+- **Rotation:** ads in a placement share impressions equally; an OfinIT /
+  Seema "Advertise here" house ad fills empty slots.
+
+### Pricing
+- **Price per placement per day** (admin-set), with optional **peak-season
+  multipliers** (e.g. Dec 15 – Jan 5 × 1.5) and **multi-day discounts** (e.g.
+  7+ days −10%, 30+ days −20%), plus coupon codes.
+- **GST 18% added on top** (§6A). Seema Holidays' **10% commission is on the
+  price after discount, before GST**; OfinIT gets the rest + GST (§0, §6).
+- Every order **snapshots** prices, discounts, GST and the commission %, so
+  later price changes never alter paid orders or invoices.
+
+### Expiry & renewal
+- An ad runs from its start date + time to its **end date + time**. An hourly
+  scheduled job marks ended ads **Expired** and removes them from serving
+  (today, expiry is only a date filter on the list).
+- **Reminder 3 days before expiry** (push + email) with a one-tap **Renew**:
+  a new order for the following dates, same creative, **no re-approval** unless
+  the creative or link changes.
+- On expiry the advertiser gets a **final report** (impressions, reach, clicks,
+  CTR). Expired ads stay in My Ads and in the admin Expired list (existing).
+
+---
+
 ## 5. Creative pipeline: crop, compress, WebP
 
 **In the browser (portal):**
@@ -262,6 +336,61 @@ check that the server's GD build has WebP support. Later, add object storage
 **Data:** ad payment and invoice data now live in **Seema's** database, next
 to ride payments (same gateway account, same reconciliation). OfinIT sees its
 share through the transfers report and its invoices.
+
+---
+
+## 6A. GST on ad payments (rev 2)
+
+**Seema Holidays collects GST from the advertiser**, as the seller of the ad
+space.
+
+**At checkout**
+- Prices are shown **before GST**; **18% is added at checkout** (normal for
+  business advertising). Example: ₹1,000 ad + ₹180 GST = **₹1,180**.
+- **Which GST** (for advertising, it follows where the buyer is) **[CA]**:
+
+| Advertiser | GST charged |
+|---|---|
+| Goa business, or individual with a Goa address | CGST 9% + SGST 9% |
+| Business registered in another state (GSTIN of another state) | IGST 18% |
+| Individual without GSTIN | by their address on record, else Goa |
+
+  (Rides differ: always Goa GST, because the trip starts in Goa.)
+- **Optional business GSTIN** at checkout, as for rides: the business gets a
+  B2B invoice and can claim the GST back, and the GSTIN's state decides IGST vs
+  CGST + SGST.
+
+**Where the GST money goes** (₹1,000 ad)
+
+| | Amount |
+|---|---|
+| Collected from advertiser | ₹1,180 (₹1,000 + ₹180 GST) |
+| Transferred to OfinIT (90% + 18% GST) | ₹1,062 |
+| Seema Holidays keeps | ₹118 |
+| Seema pays the government: ₹180 output GST − ₹162 credit on OfinIT's invoice | ₹18 |
+| **Seema Holidays' real earnings** | **₹100** (its 10%) |
+
+Seema reports ad sales in **GSTR-1** (B2B, B2B inter-state, B2C) and pays in
+**GSTR-3B**. Refunds of rejected ads issue a **credit note** that reverses the
+GST.
+
+**⚠️ Key risk: input-tax credit.** The 10% / 90% split only works if Seema
+Holidays **can offset the ₹162 GST on OfinIT's invoice** against the ₹180 it
+owes. Seema's rides use the **5% rate without input credit**, which blocks
+credit for the ride business. The ad business is a separate 18% supply, so
+credit **should** be allowed for it, but **the CA must confirm**. If it can't:
+Seema would pay the full ₹180 from the ₹118 it kept and **lose ₹62 per ₹1,000
+ad**. The fallback then is either:
+- OfinIT gets 90% + GST via a separate monthly invoice (not the automatic
+  split) and Seema keeps the full ₹180 to remit, or
+- adjust the percentages so Seema still nets ₹100 after its GST cost.
+
+**Build items**
+- **Settings → GST:** ad GST rate (default 18%) and ad SAC code **[CA]**.
+- **IGST** at ad checkout, chosen from the advertiser GSTIN's state (the
+  invoice engine already supports IGST).
+- **GSTR-1 export** extended to ad invoices, including the inter-state B2B
+  section.
 
 ---
 
