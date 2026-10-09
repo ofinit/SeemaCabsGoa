@@ -1,11 +1,48 @@
 # Self-Serve Advertising Platform — Plan
 
-Status: **proposal, not implemented**. Owner: OfinIT Solutions Pvt. Ltd.
+Status: **proposal, not implemented** (revision 2). Owner: OfinIT Solutions Pvt. Ltd.
 
 Goal: let businesses buy, upload and manage ads inside the Seema Cabs Goa
 customer app (PWA + Android/iOS) and website **by themselves**, see full
-analytics, and pay **OfinIT** directly. Every creative is cropped to the
-placement's shape, compressed and converted to WebP.
+analytics, and pay through **Seema Holidays' payment gateway**. Every creative
+is cropped to the placement's shape, compressed and converted to WebP.
+
+> **Revision 2 — payment model changed.** Ad payments are collected by the
+> fleet operator (**Seema Holidays**) on its own gateway. Seema Holidays keeps
+> a **10% commission**; the rest goes to **OfinIT, inclusive of GST**, split
+> out automatically (same Razorpay Route / Cashfree Easy Split mechanism as the
+> ride platform fee). See §0 for the money flow and §6 for the details; §2,
+> §4, §9, §11 and §12 are adjusted accordingly.
+
+---
+
+## 0. Revised money flow (revision 2)
+
+**Recommended legal structure:** Seema Holidays is the **seller of ad space**
+in its own app and website, and OfinIT supplies Seema Holidays an
+**ad-platform and ad-operations service** for a revenue share. Each party
+invoices only its own supply, the money lands with the party that sold to the
+advertiser, and the gateway split is the normal marketplace feature.
+
+Example: an ad sold for **₹1,000 + 18% GST**:
+
+| Step | Amount |
+|---|---|
+| Advertiser pays Seema Holidays (Seema's PG) | **₹1,180** (₹1,000 + ₹180 GST) |
+| OfinIT's share: 90% of ₹1,000 = ₹900, **+ 18% GST ₹162** | **₹1,062** → auto-split to OfinIT |
+| Seema Holidays keeps | **₹118** = ₹100 commission (10%) + ₹18 |
+| Seema's GST: pays ₹180 output GST, claims ₹162 input credit on OfinIT's invoice | net **₹18** to the government (the ₹18 it kept) **[CA]** |
+
+So Seema Holidays nets exactly its **10% (₹100)**, and OfinIT receives its
+**90% inclusive of GST (₹1,062)**.
+
+**Why not "OfinIT sells the ad, Seema just collects":** collecting money in
+your own merchant account for another company's sale is a payment-aggregation
+activity (RBI PA rules), conflicts with the gateway's merchant-of-record and
+KYC terms, and needs "pure agent" GST treatment. Selling the ad space itself
+and paying OfinIT through the gateway's split feature avoids all three.
+**[CA]** to confirm the structure, SAC codes and input-credit eligibility
+(Seema's rides use the 5% no-ITC rate; this ad supply is separate, at 18%).
 
 ---
 
@@ -26,6 +63,27 @@ All 20 existing ads, 8 screens and 141 clicks must be migrated, not lost.
 ---
 
 ## 2. Recommended architecture
+
+> **Revision 2: build the ads module inside the existing Seema Laravel app**,
+> at `www.seemacabsgoa.com/advertise` (advertiser portal) with the admin side
+> in the existing admin panel. Reasons the original separate-service design no
+> longer fits:
+> - Checkout must use **Seema's gateway and domain**, and the money, invoices
+>   and reconciliation belong in **Seema's database**, next to ride payments.
+> - Everything needed already exists there: gateway order creation and
+>   server-side verification, `PlatformFeeTransferService` (Route / Easy Split
+>   to OfinIT, with refund reversal), `InvoiceService` with business profiles,
+>   GST and audited settings, the WebP image helper, and the ad tables.
+> - It removes a second app, database, domain and login system.
+>
+> To keep the multi-operator option open for other TaxiGo operators, the
+> module is written **tenant-ready**: its own `ad_*` tables, its own services,
+> and no assumptions about a single operator, so it can be extracted into a
+> shared "OfinIT Ads" service later. Each operator would then use its own
+> gateway + OfinIT split account, exactly as here.
+>
+> The rest of this section describes the original (revision 1) design and is
+> kept for reference only.
 
 **Build "OfinIT Ads" as a separate, multi-tenant service at `ads.ofinit.com`**,
 deployed as its own app on the same Coolify server, with its own database.
@@ -93,7 +151,7 @@ Mapping from today's 8 screens: 1→P1+P2, 2→P2, 3/8→P3/P4 (fix the swap),
 
 ---
 
-## 4. Advertiser self-serve journey (ads.ofinit.com)
+## 4. Advertiser self-serve journey (www.seemacabsgoa.com/advertise — rev 2)
 
 1. **Sign up / log in.** Email or phone OTP, or Google. Optional team members (owner, editor, viewer).
 2. **Business profile.** Legal name, GSTIN (optional; validated, and enables an
@@ -112,8 +170,8 @@ Mapping from today's 8 screens: 1→P1+P2, 2→P2, 3/8→P3/P4 (fix the swap),
    5. **Creatives**: upload and crop per placement shape (section 5), headline
       and CTA text where the placement supports it, landing URL or phone /
       WhatsApp number. Live preview in the mock-up.
-   6. **Review & pay**: itemised quote with 18% GST, coupon code, then OfinIT
-      checkout (section 6).
+   6. **Review & pay**: itemised quote with 18% GST, coupon code, then checkout on
+      Seema Holidays' gateway with OfinIT's share split out automatically (§6).
 4. **Moderation.** Paid campaigns go to review (SLA: 24 h). If rejected: edit
    and resubmit, or get an automatic full refund.
 5. **Live.** Pause or resume, swap creative (re-review), extend dates (pay the
@@ -158,28 +216,52 @@ check that the server's GD build has WebP support. Later, add object storage
 
 ---
 
-## 6. Payments: collected by OfinIT only
+## 6. Payments: collected by Seema Holidays, OfinIT's share split out (revision 2)
 
-- Checkout runs only on `ads.ofinit.com` with **OfinIT's own** Razorpay or
-  Cashfree merchant account; that domain is the one registered in the
-  gateway's KYC. Card, UPI, netbanking and wallets.
-- Server-side order creation → hosted or modal checkout → **signature-verified
-  webhook** marks the order paid (never trust the browser redirect).
-  Idempotent webhook handling and a nightly reconciliation job against the
-  gateway's settlement report.
-- **GST-compliant invoices** issued by OfinIT: sequential numbering per
-  financial year, OfinIT GSTIN, advertiser GSTIN if given, SAC 998365
-  (advertising space sale; confirm with your CA), CGST/SGST for Goa, IGST for
-  other states.
-- Refunds go through the gateway API with a **credit note**. They are automatic
-  when an ad is rejected; pro-rata if OfinIT cancels.
-- Also: payment links for sales-assisted deals, coupons and discounts.
-  Later: prepaid wallet credits and invoicing on net terms for agencies.
-- **Revenue share with the cab operator** (if any) is calculated per tenant from
-  delivered campaigns and paid out by OfinIT (Razorpay Route or a monthly
-  transfer). Business decision: see open questions.
-- Seema's app and database store **no** ad payment data; they only see
-  approved creatives.
+**Gateway & checkout**
+- Checkout uses **Seema Holidays' own** Razorpay / Cashfree account (the same
+  keys as rides), so it must run on a **Seema domain** that is whitelisted in
+  that account: `www.seemacabsgoa.com/advertise` (recommended) or a white-label
+  `ads.seemacabsgoa.com`. It can no longer be `ads.ofinit.com`.
+- **Tell the gateways** that Seema Holidays also sells advertising (business
+  category / product listing on the website, ad pricing page, ad T&C and refund
+  policy). Selling an undeclared category can get a merchant account flagged.
+- Same safeguards as rides: server-side order creation with the amount from the
+  stored campaign order, `PaymentVerifier`-style confirmation with the gateway,
+  signed webhooks, idempotency, nightly reconciliation.
+
+**Split to OfinIT** (reuse `PlatformFeeTransferService`)
+- **Razorpay:** Route transfer of OfinIT's share (₹1,062 in the example) to
+  OfinIT's linked account in Seema's Razorpay (`acc_Qm5h0HughTNOA3`).
+- **Cashfree:** `order_splits` to OfinIT's vendor id at order creation.
+- New settings: **"Ad commission — Seema Holidays (%)"** = 10 (editable,
+  audited); OfinIT gets the remainder **+ GST**. Ad GST rate 18% and SAC
+  **[CA]**. Each order snapshots the % and amounts.
+- **Refunds** (rejected ad, cancelled campaign): Razorpay `reverse_all` /
+  Cashfree `refund_splits` reverse OfinIT's share with the refund; pro-rata
+  partial refunds reverse pro-rata. Credit notes on both sides.
+- **Offline / admin-entered ad sales** (cash, bank transfer, existing admin
+  ad module): no gateway split. OfinIT's share appears on its monthly invoice
+  to Seema Holidays as **payable**, settled by bank transfer.
+
+**Invoices** (reuse `InvoiceService` + business profiles)
+- **Seema Holidays → advertiser:** tax invoice for the ad, 18% GST (CGST+SGST
+  in Goa, IGST for other states), advertiser GSTIN for B2B input credit. New
+  series, e.g. `SH/26-27/AD00001`. Issued on payment (ads are paid in advance;
+  if a campaign starts later, a receipt voucher first and the invoice at
+  start **[CA]**).
+- **OfinIT → Seema Holidays:** a separate **"Ad platform & operations"** line
+  (own SAC) on the existing monthly OfinIT invoice, or its own monthly invoice:
+  90% of net ad revenue + 18% GST. Marked as already collected via split
+  (online sales) or payable (offline sales).
+- **TDS:** Seema paying OfinIT may require TDS deduction (194C/194J
+  depending on how the service is classified) **[CA]**. If TDS applies, the
+  split must transfer the share **net of TDS** and the TDS is shown on the
+  invoice settlement.
+
+**Data:** ad payment and invoice data now live in **Seema's** database, next
+to ride payments (same gateway account, same reconciliation). OfinIT sees its
+share through the transfers report and its invoices.
 
 ---
 
@@ -291,7 +373,7 @@ path, bytes), `orders`, `payments`, `refunds`, `invoices`, `credit_notes`,
 | Phase | Scope | Rough size |
 |---|---|---|
 | **0. Quick fixes in Seema app** | Gate ads on `status`; enforce `start_time`/`end_time`; serve ads per screen instead of top/bottom only; fix screen 3/8 swap; add a "Sponsored" label; stop storing per-click GPS; add viewable-impression tracking | ~1 week |
-| **1. MVP on ads.ofinit.com** | Tenant + placements; advertiser signup; campaign wizard (placements, dates, area); crop → WebP pipeline; OfinIT checkout + webhook + GST invoice; review queue; serve/events/click APIs; Seema proxy; basic dashboard (impressions, reach, clicks, CTR by day/placement); migrate existing 20 ads and 8 screens | ~5–7 weeks |
+| **1. MVP in the Seema app (rev 2)** | Placements; advertiser signup; campaign wizard (placements, dates, area); crop → WebP pipeline; checkout on Seema's gateway with OfinIT split (reusing `PlatformFeeTransferService`) + refund reversal; Seema → advertiser GST invoice and OfinIT's monthly ad-share line (reusing `InvoiceService`); ad commission setting; review queue; viewable impressions/clicks; basic dashboard; migrate existing 20 ads and 8 screens | ~4–5 weeks (less than rev 1: payments, splits, invoices and settings already exist) |
 | **2. Growth** | Hour/day targeting, availability calendar, share-of-voice pricing, website placements (P9), email footer (P10), PDF/scheduled reports, coupons, A/B creatives, refunds automation, tenant read-only view, invalid-traffic filtering v2 | ~4–6 weeks |
 | **3. Scale** | New native placements (app release), sponsored push (P11), conversion pixel/postbacks, wallet and agency accounts, onboarding of other TaxiGo operators, CPM/CPC pricing, object storage + CDN, ClickHouse if needed | ongoing |
 
@@ -299,14 +381,21 @@ path, bytes), `orders`, `payments`, `refunds`, `invoices`, `credit_notes`,
 
 ## 12. Open questions (need a decision)
 
-1. **Revenue share** with the cab operator: none, fixed %, or per placement?
+1. ~~Revenue share~~ — **decided (rev 2):** Seema Holidays 10%, OfinIT the
+   rest inclusive of GST, split automatically. Is the 10% on the ad price
+   **excluding** GST (assumed), and the same for every placement?
 2. **Pricing model** at launch: keep per-day per-placement (today's model), or
    introduce CPM packages from day one?
-3. **Which OfinIT gateway** collects ad payments: Razorpay or Cashfree? Is the
-   ofinit.com domain already KYC-approved on it?
+3. ~~Which OfinIT gateway~~ — **decided (rev 2):** Seema Holidays' Razorpay /
+   Cashfree. Has Seema informed both gateways that it will also sell
+   advertising on `seemacabsgoa.com`?
+3a. **[CA]** Confirm the structure in §0 (Seema sells the ad space; OfinIT
+   supplies an ad-platform service to Seema), the SAC codes, Seema's input
+   credit on OfinIT's 18% invoice, and whether Seema must deduct TDS.
 4. Should **gender targeting** stay? It exists today. Recommendation: drop it,
    as it adds privacy risk and little value for local Goa advertisers.
 5. **Who reviews ads**, and what review SLA is promised?
 6. Will the **Android/iOS apps** get an update in Phase 1, or only via the
    unchanged proxy API until Phase 3?
-7. Is `ads.ofinit.com` the final domain (DNS + TLS on the Coolify server)?
+7. ~~`ads.ofinit.com`~~ — **rev 2:** `www.seemacabsgoa.com/advertise`
+   (or `ads.seemacabsgoa.com`), whitelisted in Seema's gateways.
