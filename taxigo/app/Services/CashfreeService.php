@@ -13,7 +13,9 @@ class CashfreeService
     protected ?string $secretKey;
     protected string $mode;
     protected ?string $webhookSecret;
-    protected string $apiVersion = '2023-08-01';
+    // 2025-01-01 is additive over 2023-08-01 for every field this app uses
+    // (order create/get, refunds, order_splits, easy-split split-after-payment).
+    protected string $apiVersion = '2025-01-01';
 
     public function __construct()
     {

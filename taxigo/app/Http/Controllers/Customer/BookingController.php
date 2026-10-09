@@ -10,7 +10,10 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\PaymentRequest;
 use App\Http\Requests\Api\SightSeeingBookingRegisterRequest;
 use App\Http\Requests\Api\StoreBookingRequest;
+use App\Enums\Type;
+use App\Models\BookingDetail;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 
 /**
  * Thin JSON layer for the customer PWA's booking flow. Every method below
@@ -68,6 +71,48 @@ class BookingController extends Controller
     public function confirmPayment(Request $request)
     {
         return app(ApiBookingController::class)->updatePaymentStatus($request);
+    }
+
+    /**
+     * Cashfree `return_url` (…/cashfree/return?order_id={order_id}). Reached
+     * when a payment method leaves the checkout modal (some netbanking / 3-D
+     * Secure flows). The browser's word is never trusted: confirmation goes
+     * through the same server-side Get Order verification as the in-page
+     * flow, and the webhook remains the backup.
+     */
+    public function cashfreeReturn(Request $request)
+    {
+        $orderId = (string) $request->query('order_id', '');
+        $booking = null;
+        if (preg_match('/^CF_([A-Za-z0-9-]+)_\d+$/', $orderId, $m)) {
+            $booking = BookingDetail::where('booking_id', $m[1])
+                ->where('customer_id', Auth::guard('customer')->id())
+                ->first();
+        }
+        if (!$booking) {
+            return view('customer.book.payment-result', ['state' => 'unknown', 'booking' => null, 'message' => 'We could not find this booking.']);
+        }
+
+        if ((int) $booking->payment_status !== Type::ACTIVE) {
+            $result = app(ApiBookingController::class)->updatePaymentStatus(new Request([
+                'booking_id' => $booking->booking_id,
+                'status' => 1,
+                'transaction_id' => $orderId,
+                'pg_order_id' => $orderId,
+                'payment_gateway' => 'cashfree',
+            ]))->getData(true);
+
+            if (empty($result['status'])) {
+                return view('customer.book.payment-result', [
+                    'state' => 'failed',
+                    'booking' => $booking,
+                    'message' => $result['message'] ?? 'Payment was not completed.',
+                ]);
+            }
+            $booking->refresh();
+        }
+
+        return view('customer.book.payment-result', ['state' => 'paid', 'booking' => $booking, 'message' => null]);
     }
 
     public function sightseeingList(Request $request)

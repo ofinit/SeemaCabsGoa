@@ -82,6 +82,8 @@ Route::prefix('app')->name('customer.')->group(function () {
             Route::post('create-order', [BookingController::class, 'createOrder'])->name('create-order');
             Route::post('cashfree/create-order', [BookingController::class, 'createCashfreeOrder'])->name('cashfree.create-order');
             Route::post('confirm-payment', [BookingController::class, 'confirmPayment'])->name('confirm-payment');
+            // Cashfree return_url — the path is fixed by CashfreeService::createOrder().
+            Route::get('cashfree/return', [BookingController::class, 'cashfreeReturn'])->name('cashfree.return');
 
             Route::get('sightseeing', [BookingController::class, 'sightseeingList'])->name('sightseeing.list');
             Route::post('sightseeing/cab-list', [BookingController::class, 'sightseeingCabList'])->name('sightseeing.cab-list');
