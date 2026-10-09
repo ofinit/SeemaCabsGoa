@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api;
 use App\Enums\CustomerDetailsEnum;
 use App\Enums\Type;
 use App\Http\Controllers\Controller;
-use App\Models\CabRate;
 use App\Models\Environment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -24,7 +23,6 @@ class SettingController extends ResponseController
                 Type::AppIosUrl,
                 Type::AppAndroidUrl,
                 Type::PAYMENT_KEY,
-                Type::PAYMENT_SECRETE,
                 Type::RAZORPAY_ENABLED,
                 Type::CASHFREE_APP_ID,
                 Type::CASHFREE_SECRET_KEY,
@@ -32,7 +30,6 @@ class SettingController extends ResponseController
                 Type::CASHFREE_ENABLED,
                 Type::PRIMARY_PAYMENT_GATEWAY,
                 'google_client_id',
-                'google_client_secret'
             ])->pluck('value', 'title');
 
 
@@ -60,7 +57,9 @@ class SettingController extends ResponseController
             $razorpayEnabledVal = $envoirements[Type::RAZORPAY_ENABLED] ?? '1';
             $data['razorpay_enabled'] = ($razorpayEnabledVal === '1' || $razorpayEnabledVal === 1 || $razorpayEnabledVal === true || $razorpayEnabledVal === 'true');
             $data['payment_key'] = $envoirements[Type::PAYMENT_KEY] ?? null;
-            $data['payment_secrete_key'] = $envoirements[Type::PAYMENT_SECRETE] ?? null;
+            // This endpoint is public. Secrets stay server-side; the keys are kept
+            // (as null) only so older app builds that read them don't break.
+            $data['payment_secrete_key'] = null;
 
             $cashfreeEnabledVal = $envoirements[Type::CASHFREE_ENABLED] ?? '0';
             $cashfreeAppId = $envoirements[Type::CASHFREE_APP_ID] ?? null;
@@ -72,7 +71,7 @@ class SettingController extends ResponseController
 
 
             $data['google_client_id'] = $envoirements['google_client_id'] ?? null;
-            $data['google_client_secret'] = $envoirements['google_client_secret'] ?? null;
+            $data['google_client_secret'] = null;
             $data['min_booking_time'] = getMinimumBookingTime() ?? null;
             $data['max_booking_time'] = getMaximumBookingTime() ?? null;
             $data['max_cancellation_time'] = getMaxCancellationHour() ?? null;
@@ -94,35 +93,5 @@ class SettingController extends ResponseController
             Log::error('Getting error of get setting details :' . $th->getMessage());
             return $this->error('Something went wrong, Please try again latter.');
         }
-    }
-
-    public function updateBaseFareForTab3()
-    {
-        // Fetch cab_rates where tab = 3 with cab_price_types relation
-        $cabRates = CabRate::with('priceType')->where('tab', 3)->get();
-
-
-        $updatedCount = 0;
-        foreach ($cabRates as $rate) {
-            foreach ($rate->priceType as $priceType) {
-
-            $oldFare = $priceType->base_fare;
-
-            // Increase by 30%
-            $newFare = $oldFare + ($oldFare * 0.30);
-
-            // Save updated fare
-            $priceType->update([
-                'base_fare' => $newFare
-            ]);
-
-            $updatedCount++;
-        }
-        }
-
-        return response()->json([
-            'message' => 'Base fare updated by +30% for all cab_rates where tab = 3',
-            'updated_count' => $cabRates->count()
-        ]);
     }
 }

@@ -46,7 +46,6 @@ Route::post('/booking-register', [AuthController::class, 'bookingRegister']);
 
 // Setting Details
 Route::get('/settings', [SettingController::class, 'settingDetails']);
-Route::get('/update-base-fare-tab-3', [SettingController::class, 'updateBaseFareForTab3']);
 
 Route::post('/vendor-token-update', [vendorController::class, 'update']);
 
