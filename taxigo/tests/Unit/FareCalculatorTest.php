@@ -43,13 +43,35 @@ class FareCalculatorTest extends TestCase
         $this->assertSame(26700, $fare->advance);
     }
 
-    public function test_platform_fee_and_operator_split_are_based_on_the_fare_before_markup(): void
+    public function test_commissions_are_a_percentage_of_the_fare_including_markup(): void
     {
-        $fare = (new FareCalculator($this->settings()))->ride(1000, 3);
+        $fare = (new FareCalculator($this->settings()))->ride(1000, 3); // fare ₹1200, advance ₹240
 
-        $this->assertSame(10000, $fare->platformFee);          // 10% of ₹1000, unchanged by markup
-        $this->assertSame(10000, $fare->operatorCommission);   // the old code made this 100× too high
-        $this->assertSame(24000 - 10000, $fare->fleetOperatorPayment);
+        $this->assertSame(12000, $fare->platformFee);          // OfinIT: 10% of ₹1200
+        $this->assertSame(12000, $fare->operatorCommission);   // fleet operator: 10% of ₹1200 (old code: 100× too high)
+        $this->assertSame(12000, $fare->fleetOperatorPayment);
+        $this->assertSame($fare->advance, $fare->platformFee + $fare->operatorCommission);
+    }
+
+    public function test_rounding_never_pays_out_more_than_the_advance(): void
+    {
+        // Markup 0 so the fare is exactly ₹1245: 10% = 124.50 rounds up twice, advance 20% = 249.
+        $fare = (new FareCalculator($this->settings([PricingSettings::MARKUP_RIDES => '0'])))->ride(1245, 3);
+
+        $this->assertSame(24900, $fare->advance);
+        $this->assertSame(12500, $fare->platformFee);
+        $this->assertSame(12400, $fare->fleetOperatorPayment);
+        $this->assertLessThanOrEqual($fare->advance, $fare->platformFee + $fare->fleetOperatorPayment);
+    }
+
+    public function test_gst_inside_the_advance_is_not_paid_out_as_commission(): void
+    {
+        $fare = (new FareCalculator($this->settings([PricingSettings::GST_ENABLED => '1'])))->ride(1000, 3);
+
+        $this->assertSame(25200, $fare->advance);              // 20% of ₹1260
+        $this->assertSame(12000, $fare->platformFee);
+        $this->assertSame(12000, $fare->fleetOperatorPayment);
+        $this->assertSame(1200, $fare->advance - $fare->platformFee - $fare->fleetOperatorPayment); // GST share, stays with supplier
     }
 
     public function test_gst_applies_only_from_the_start_date(): void

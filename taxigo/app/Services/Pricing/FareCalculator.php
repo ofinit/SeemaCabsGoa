@@ -16,7 +16,8 @@ use Carbon\Carbon;
  *   GST           = round₹(fare × rate %), split CGST/SGST    ← only if it applies
  *   total         = fare + GST
  *   advance       = round₹(total × advance %)  (rides; packages pay 100%)
- *   platform fee  = round₹(farePreMarkup × platform-fee %)
+ *   platform fee  = round₹(fare × platform-fee %)      (OfinIT)
+ *   operator comm = round₹(fare × operator %)          (fleet operator payout, rides)
  *
  * The markup is internal: it is never shown as a separate line to customers.
  */
@@ -106,10 +107,18 @@ class FareCalculator
         $advance = min($total, self::roundRupee((int) round($total * $advancePercent / 100)));
         $balance = $total - $advance;
 
-        $platformFee = self::roundRupee((int) round($farePreMarkup * $platformFeePercent / 100));
-        $operatorCommission = (int) round($farePreMarkup * $operatorPercent / 100);
-        $fleetOperatorPayment = $kind === 'ride' ? $advance - $platformFee : $fare - $platformFee;
-        $tds = (int) round($farePreMarkup * $this->percent(Type::TdsTitle) / 100);
+        // Commissions are a % of the fare the customer sees (markup included,
+        // GST excluded). With 10% + 10% and a 20% advance, the advance splits
+        // exactly into the two commissions; any GST inside the advance stays
+        // with the supplier (Seema Holidays) for remittance, never paid out.
+        $platformFee = self::roundRupee((int) round($fare * $platformFeePercent / 100));
+        $operatorCommission = self::roundRupee((int) round($fare * $operatorPercent / 100));
+        // Rupee rounding can make the two commissions exceed the advance by ₹1;
+        // never pay the operator more than what's left of the advance.
+        $fleetOperatorPayment = $kind === 'ride'
+            ? max(0, min($operatorCommission, $advance - $platformFee))
+            : $fare - $platformFee;
+        $tds = (int) round($fare * $this->percent(Type::TdsTitle) / 100);
 
         $sac = trim((string) ($this->settings[$sacKey] ?? ''));
 

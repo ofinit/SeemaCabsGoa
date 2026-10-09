@@ -40,9 +40,10 @@ class BillingSettingsController extends Controller
     private const PRICING_FIELDS = [
         PricingSettings::MARKUP_RIDES => ['label' => 'Fare markup — rides (%)', 'min' => -50, 'max' => 100],
         PricingSettings::MARKUP_PACKAGES => ['label' => 'Fare markup — sightseeing packages (%)', 'min' => -50, 'max' => 100],
-        Type::CompanyCommission => ['label' => 'OfinIT platform fee — rides (% of fare before markup)', 'min' => 0, 'max' => 100],
-        Type::PackageAggregatorCommission => ['label' => 'OfinIT platform fee — packages (% of package price before markup)', 'min' => 0, 'max' => 100],
-        Type::TotalCommission => ['label' => 'Advance paid online — rides (% of total)', 'min' => 0, 'max' => 100],
+        Type::CompanyCommission => ['label' => 'OfinIT platform fee — rides (% of fare incl. markup, excl. GST)', 'min' => 0, 'max' => 100],
+        Type::PackageAggregatorCommission => ['label' => 'OfinIT platform fee — packages (% of package price incl. markup, excl. GST)', 'min' => 0, 'max' => 100],
+        Type::FleetOperatorCommission => ['label' => 'Fleet operator commission — rides (% of fare incl. markup, excl. GST)', 'min' => 0, 'max' => 100],
+        Type::TotalCommission => ['label' => 'Advance paid online — rides (% of total incl. GST)', 'min' => 0, 'max' => 100],
     ];
 
     public function pricing()
@@ -232,6 +233,8 @@ class BillingSettingsController extends Controller
             'advance' => FareBreakdown::rupees($f->advance),
             'balance' => FareBreakdown::rupees($f->balance),
             'platform_fee' => FareBreakdown::rupees($f->platformFee),
+            'operator' => FareBreakdown::rupees($f->fleetOperatorPayment),
+            'retained' => FareBreakdown::rupees($f->advance - $f->platformFee - $f->fleetOperatorPayment),
         ];
 
         return ['now' => $row($ride), 'with_gst' => $row($withGst)];

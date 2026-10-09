@@ -60,7 +60,7 @@
                         <div class="row">
                             <div class="col-lg-4 col-md-6">
                                 <div class="mb-3">
-                                    <label class="form-label" for="agreegator">OfinIT Platform Fee — rides (%)</label>
+                                    <label class="form-label" for="agreegator">OfinIT Platform Fee — rides (% of fare incl. markup)</label>
                                     <div class="input-group ">
                                         <input type="hidden" name="title[]" value="aggregatorcommission" id="">
                                         @if (isset($envoirements) && count($envoirements) > 0)
@@ -99,7 +99,7 @@
                             </div>
                             <div class="col-lg-4 col-md-6">
                                 <div class="mb-3">
-                                    <label class="form-label" for="fleetOperator">Fleet Operator Commission</label>
+                                    <label class="form-label" for="fleetOperator">Fleet Operator Commission — rides (% of fare incl. markup)</label>
                                     <div class="input-group ">
                                         <input type="hidden" name="title[]" value="operatorcommission" id="">
                                         @if (isset($envoirements) && count($envoirements) > 0)
@@ -170,7 +170,7 @@
                             </div>
                             <div class="col-lg-4 col-md-6">
                                 <div class="mb-3">
-                                    <label class="form-label" for="packageAgreegator">OfinIT Platform Fee — packages (%)</label>
+                                    <label class="form-label" for="packageAgreegator">OfinIT Platform Fee — packages (% of price incl. markup)</label>
                                     <div class="input-group ">
                                         <input type="hidden" name="title[]" value="packageaggregatorcommission" id="">
                                         @if (isset($envoirements) && count($envoirements) > 0)

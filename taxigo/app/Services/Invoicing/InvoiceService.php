@@ -430,8 +430,11 @@ class InvoiceService
     private function platformFeeFor(BookingDetail $booking): array
     {
         if ($booking->platform_fee_amount !== null) {
+            // v3: fee is a % of the fare incl. markup; v2: of the fare before markup.
+            $base = (int) $booking->pricing_version >= 3 ? $booking->base_fare : ($booking->fare_before_markup ?? $booking->base_fare);
+
             return [
-                $this->paise($booking->fare_before_markup ?? $booking->base_fare),
+                $this->paise($base),
                 (float) $booking->platform_fee_percent,
                 $this->paise($booking->platform_fee_amount),
             ];

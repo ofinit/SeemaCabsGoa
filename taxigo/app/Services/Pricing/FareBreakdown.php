@@ -25,7 +25,7 @@ class FareBreakdown
         public readonly int $advance,              // paid online to confirm
         public readonly int $balance,              // paid to the driver
         public readonly float $platformFeePercent,
-        public readonly int $platformFee,          // OfinIT platform fee (on the fare before markup)
+        public readonly int $platformFee,          // OfinIT platform fee (% of fare incl. markup, excl. GST)
         public readonly int $operatorCommission,
         public readonly int $fleetOperatorPayment,
         public readonly int $tds,
@@ -52,7 +52,8 @@ class FareBreakdown
     public function bookingAttributes(): array
     {
         return [
-            'pricing_version' => 2,
+            // 3 = commissions on the fare incl. markup (2 = on the fare before markup).
+            'pricing_version' => 3,
             'fare_before_markup' => self::rupees($this->farePreMarkup),
             'markup_percent' => $this->markupPercent,
             'markup_amount' => self::rupees($this->markup),
