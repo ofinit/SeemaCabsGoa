@@ -215,7 +215,8 @@ lists with renew, `screen_prices` per screen per day) and replaces the static
 - **Mobile-first wizard:**
   1. **Placement(s):** cards with a screenshot of where the ad appears, its
      shape, price per day and availability.
-  2. **Dates:** calendar with sold-out days greyed out; minimum 1 day.
+  2. **Dates:** calendar with sold-out days greyed out; **minimum 7 consecutive
+     days** per placement (the calendar won't accept a shorter range).
   3. **Creative:** upload, then crop to the placement's shape (§5); one crop per
      selected placement. Link type: website / WhatsApp / call.
   4. **Review & pay:** placements × days, any discount, **GST 18%** (§6A),
@@ -255,8 +256,9 @@ lists with renew, `screen_prices` per screen per day) and replaces the static
 
 ### Pricing
 - **Price per placement per day** (admin-set), with optional **peak-season
-  multipliers** (e.g. Dec 15 – Jan 5 × 1.5) and **multi-day discounts** (e.g.
-  7+ days −10%, 30+ days −20%), plus coupon codes.
+  multipliers** (e.g. Dec 15 – Jan 5 × 1.5) and **longer-booking discounts**:
+  **7 days is the minimum and is charged at the list price**, 14+ days −10%,
+  30+ days −20%; plus coupon codes.
 - **GST 18% added on top** (§6A). Seema Holidays' **10% commission is on the
   price after discount, before GST**; OfinIT gets the rest + GST (§0, §6).
 - Every order **snapshots** prices, discounts, GST and the commission %, so
@@ -272,28 +274,30 @@ in late 2025, and 36 ads have earned ₹1,866 in total. The current admin
 prices are also out of line with visibility (the Account screen is the most
 expensive at ₹100/day; Home is the cheapest at ₹10/day).
 
-| Placement | Visibility | Launch price / day | 7 days (−10%) | 30 days (−20%) |
+| Placement | Visibility | Launch price / day | 7 days (minimum) | 30 days (−20%) |
 |---|---|---|---|---|
-| P13 Finding-a-taxi — full-screen takeover | Exclusive, whole screen during search | **₹199** | ₹1,254 | ₹4,776 |
-| P16 App-open sponsor ("Presented by") | Exclusive, every app open | **₹149** | ₹939 | ₹3,576 |
-| P1 Home hero carousel | Every app open | **₹99** | ₹624 | ₹2,376 |
-| P12 Finding-a-taxi — large card (double size) | Long dwell while booking | **₹99** | ₹624 | ₹2,376 |
-| P15 Airport arrival offers | Tourists just landed (airport pickups) | **₹79** | ₹498 | ₹1,896 |
-| P9 Website landing pages (per page group) | SEO visitors (tourists) | **₹79** | ₹498 | ₹1,896 |
-| P3 Finding-a-taxi — top banner | Long dwell while booking | **₹49** | ₹309 | ₹1,176 |
-| P5 Booking confirmed | Every paying customer | **₹49** | ₹309 | ₹1,176 |
-| P14 Sightseeing package — sponsored stop | Tour customers, per package | **₹49** | ₹309 | ₹1,176 |
-| P4 Finding-a-taxi — bottom banner | Long dwell while booking | **₹39** | ₹246 | ₹936 |
-| P7 Ride complete / rating | After each trip | **₹39** | ₹246 | ₹936 |
-| P2 Home inline, P6 Driver details | Medium | **₹29** | ₹183 | ₹696 |
-| P8 Rides history & Account, P17 Notifications | Low | **₹19** | ₹120 | ₹456 |
-| **Finding-a-taxi bundle:** P12 large + P4 bottom | The whole waiting screen except takeovers | **₹119** (vs ₹138) | ₹750 | ₹2,856 |
-| **Booking journey bundle:** P1 + P12 + P5 | Home, search and confirmation | **₹199** (vs ₹247) | ₹1,254 | ₹4,776 |
+| P13 Finding-a-taxi — full-screen takeover | Exclusive, whole screen during search | **₹199** | ₹1,393 | ₹4,776 |
+| P16 App-open sponsor ("Presented by") | Exclusive, every app open | **₹149** | ₹1,043 | ₹3,576 |
+| P1 Home hero carousel | Every app open | **₹99** | ₹693 | ₹2,376 |
+| P12 Finding-a-taxi — large card (double size) | Long dwell while booking | **₹99** | ₹693 | ₹2,376 |
+| P15 Airport arrival offers | Tourists just landed (airport pickups) | **₹79** | ₹553 | ₹1,896 |
+| P9 Website landing pages (per page group) | SEO visitors (tourists) | **₹79** | ₹553 | ₹1,896 |
+| P3 Finding-a-taxi — top banner | Long dwell while booking | **₹49** | ₹343 | ₹1,176 |
+| P5 Booking confirmed | Every paying customer | **₹49** | ₹343 | ₹1,176 |
+| P14 Sightseeing package — sponsored stop | Tour customers, per package | **₹49** | ₹343 | ₹1,176 |
+| P4 Finding-a-taxi — bottom banner | Long dwell while booking | **₹39** | ₹273 | ₹936 |
+| P7 Ride complete / rating | After each trip | **₹39** | ₹273 | ₹936 |
+| P2 Home inline, P6 Driver details | Medium | **₹29** | ₹203 | ₹696 |
+| P8 Rides history & Account, P17 Notifications | Low | **₹19** | ₹133 | ₹456 |
+| **Finding-a-taxi bundle:** P12 large + P4 bottom | The whole waiting screen except takeovers | **₹119** (vs ₹138) | ₹833 | ₹2,856 |
+| **Booking journey bundle:** P1 + P12 + P5 | Home, search and confirmation | **₹199** (vs ₹247) | ₹1,393 | ₹4,776 |
 | **P18 In-cab QR card** (offline) | Every passenger in the cab | **₹299 per cab per month** (printing included) | — | — |
 
 - **Peak season** (e.g. 15 Dec – 5 Jan, Shigmo, long weekends): × 1.5.
-- Minimum order **₹199** (before GST), so very small orders don't cost more
-  to review than they earn.
+- **Minimum booking: 7 days** per placement (exclusive placements — P13
+  full-screen, P16 app-open — are sold in 7-day blocks). This replaces the
+  earlier ₹199 minimum order; the smallest possible order is now ₹133
+  (7 days × ₹19).
 - Example: Home hero for 30 days = ₹2,376 + ₹427.68 GST = ₹2,803.68; Seema
   Holidays keeps 10% = ₹237.60; OfinIT gets ₹2,138.40 + GST.
 - **Review after 30 days of measured viewable impressions** (Phase 0 adds
@@ -317,8 +321,9 @@ expensive at ₹100/day; Home is the cheapest at ₹10/day).
   scheduled job marks ended ads **Expired** and removes them from serving
   (today, expiry is only a date filter on the list).
 - **Reminder 3 days before expiry** (push + email) with a one-tap **Renew**:
-  a new order for the following dates, same creative, **no re-approval** unless
-  the creative or link changes.
+  a new order for the following dates (**minimum 7 days**, like any booking),
+  same creative, **no re-approval** unless the creative or link changes.
+  **Extend** on a live ad also adds at least 7 days.
 - On expiry the advertiser gets a **final report** (impressions, reach, clicks,
   CTR). Expired ads stay in My Ads and in the admin Expired list (existing).
 
