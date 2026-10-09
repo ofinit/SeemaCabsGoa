@@ -67,6 +67,7 @@ Route::group(['prefix' => 'admin', 'middleware' => ['auth', 'TwoFa'], 'as' => 'a
     Route::get('/security-qr-code-generate', [SecurityController::class, 'qrCodeGenerate'])->name('security.qrCodeGenerate');
     Route::post('update-profile', [AccountController::class, 'updateProfileImage'])->name('updateProfileImage');
     Route::post('change-password', [AccountController::class, 'changePassword'])->name('changePassword');
+    Route::post('change-email', [AccountController::class, 'changeEmail'])->name('changeEmail');
 
     Route::prefix('setting')->name('setting.')->group(function () {
         Route::prefix('city')->name('city.')->group(function () {

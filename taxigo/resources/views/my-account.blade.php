@@ -144,6 +144,44 @@
                         </div>
                     </form>
                 </div>
+                <div class="col-12">
+                    <form method="POST" action="{{ route('admin.changeEmail') }}">
+                        @csrf
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="mb-1">Change Login Email</h5>
+                                <p class="text-muted small mb-0">Currently <strong>{{ $user->email }}</strong>. You will use the new email to log in.</p>
+                            </div>
+                            <div class="card-body">
+                                <ul class="list-group list-group-flush">
+                                    <li class="list-group-item pt-0 px-0">
+                                        <div class="row mb-0">
+                                            <label class="col-form-label col-md-2 col-sm-12 text-md-end" for="new_email">New Email <span class="text-danger">*</span></label>
+                                            <div class="col-md-10 col-sm-12">
+                                                <input type="email" id="new_email" name="email" class="form-control" value="{{ old('email') }}" required maxlength="191" autocomplete="email">
+                                                @error('email')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
+                                            </div>
+                                        </div>
+                                    </li>
+                                    <li class="list-group-item pb-0 px-0">
+                                        <div class="row mb-0">
+                                            <label class="col-form-label col-md-2 col-sm-12 text-md-end" for="email_password">Current Password <span class="text-danger">*</span></label>
+                                            <div class="col-md-10 col-sm-12">
+                                                <input type="password" id="email_password" name="current_password" class="form-control" required autocomplete="current-password">
+                                                @error('current_password')<div class="text-danger small mt-1">{{ $message }}</div>@enderror
+                                            </div>
+                                        </div>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-body text-end">
+                                <button type="submit" class="btn btn-primary">Change Email</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
         <!-- [ sample-page ] end -->

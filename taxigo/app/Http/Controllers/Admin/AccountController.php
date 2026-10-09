@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ChangePasswordRequest;
+use App\Models\SettingChange;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -45,6 +47,29 @@ class AccountController extends Controller
             Log::error('Getting error of display account page  :' . $th->getMessage());
             return redirect()->back()->with('error', 'Something went wrong, Please try again latter.');
         }
+    }
+
+    /** Change the logged-in admin's login email (requires the current password). */
+    public function changeEmail(Request $request)
+    {
+        $user = Auth::user();
+        $data = $request->validate([
+            'email' => ['required', 'email:rfc', 'max:191', Rule::unique('users', 'email')->ignore($user->id)->whereNull('deleted_at')],
+            'current_password' => 'required|string',
+        ], [
+            'email.unique' => 'This email is already used by another account.',
+        ]);
+
+        if (!Hash::check($data['current_password'], $user->password)) {
+            return redirect()->back()->withInput()->withErrors(['current_password' => 'Current password is not correct.']);
+        }
+
+        $old = $user->email;
+        $user->email = strtolower(trim($data['email']));
+        $user->save();
+        SettingChange::record("account.{$user->id}.email", $old, $user->email);
+
+        return redirect()->back()->with('success', 'Login email changed to ' . $user->email . '. Use it the next time you log in.');
     }
 
     public function changePassword(ChangePasswordRequest $request)
