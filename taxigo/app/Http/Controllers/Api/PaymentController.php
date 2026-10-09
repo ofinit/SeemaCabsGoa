@@ -102,16 +102,17 @@ class PaymentController extends ResponseController
             'phone' => $request->phone ?? ($booking ? ($booking->phone_number ?? '9999999999') : '9999999999'),
         ];
 
-        // Easy Split with Fleet Operator if configured. The split comes from the
-        // booking's server-side settlement, not from the request.
+        // The fleet operator is the merchant; OfinIT is the Easy Split vendor and
+        // receives its fee + GST. The amount comes from the booking's
+        // server-side settlement, never from the request.
         $orderSplits = null;
-        $settlement = $booking ? json_decode((string) Payment::where('booking_id', $booking->id)->value('amount_settlement'), true) : null;
-        $fleetOperatorPayment = (float) ($settlement['fleet_operator_total_payment'] ?? 0);
+        $paymentRow = $booking ? Payment::where('booking_id', $booking->id)->orderBy('id')->first() : null;
+        $ofinitShare = $paymentRow ? \App\Services\Payments\PlatformFeeTransferService::amountFor($paymentRow) : 0;
         $fleetOperator = \App\Models\FleetOperator::orderBy('id', 'ASC')->first();
 
-        if ($fleetOperator && !empty($fleetOperator->cashfree_vendor_id) && $fleetOperatorPayment > 0) {
+        if ($fleetOperator && !empty($fleetOperator->cashfree_vendor_id) && $ofinitShare > 0) {
             // Cashfree vendor split amount cannot exceed total order amount
-            $splitAmount = min(round($fleetOperatorPayment, 2), round($amount, 2));
+            $splitAmount = min(round($ofinitShare, 2), round($amount, 2));
             if ($splitAmount > 0) {
                 $orderSplits = [
                     [

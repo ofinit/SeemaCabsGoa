@@ -29,7 +29,7 @@ use App\Models\CabPriceType;
 use App\Models\Invoice;
 use App\Models\SightSeeingPackageCabPrice;
 use App\Services\Invoicing\InvoiceService;
-use App\Services\Payments\FleetPayoutService;
+use App\Services\Payments\PlatformFeeTransferService;
 use App\Services\Payments\PaymentVerifier;
 use App\Services\Pricing\FareBreakdown;
 use App\Services\Pricing\FareCalculator;
@@ -255,13 +255,13 @@ class BookingController extends ResponseController
 
             DB::commit();
 
-            // Pay the fleet operator its share of the advance (Razorpay Route /
-            // Cashfree split). Never blocks the booking; failures show up in
-            // Admin → Reports → Fleet Payouts for retry.
+            // The operator is the merchant: transfer OfinIT's fee + GST out of the
+            // payment (Razorpay Route / Cashfree split). Never blocks the booking;
+            // failures show in Admin → Reports → OfinIT Fee Transfers for retry.
             try {
-                app(FleetPayoutService::class)->payout($bookingDetails, $paymentDetails->fresh());
+                app(PlatformFeeTransferService::class)->transfer($bookingDetails, $paymentDetails->fresh());
             } catch (\Throwable $th) {
-                Log::error("Fleet payout failed for {$bookingId}: " . $th->getMessage());
+                Log::error("OfinIT fee transfer failed for {$bookingId}: " . $th->getMessage());
             }
 
             try {

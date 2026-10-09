@@ -228,18 +228,18 @@
                         </div>
                         <div class="col-md-4">
                             <div class="mb-3">
-                                <label class="form-label" for="razorpayAccount">Razorpay Route Account</label>
+                                <label class="form-label" for="razorpayAccount">OfinIT linked account in this operator's Razorpay Route</label>
                                 <input type="text" class="form-control"
                                     value="{{ @$flletOperator->razorpay_account ?? old('razorpay_account') }}"
-                                    name="razorpay_account" id="razorpayAccount" placeholder="Ex: acc_vendor123">
+                                    name="razorpay_account" id="razorpayAccount" placeholder="Ex: acc_XXXXXXXXXXXXXX (receives OfinIT's fee + GST)">
                             </div>
                         </div>
                         <div class="col-md-4">
                             <div class="mb-3">
-                                <label class="form-label" for="cashfreeVendorId">Cashfree Easy Split Vendor ID</label>
+                                <label class="form-label" for="cashfreeVendorId">OfinIT vendor ID in this operator's Cashfree Easy Split</label>
                                 <input type="text" class="form-control"
                                     value="{{ @$flletOperator->cashfree_vendor_id ?? old('cashfree_vendor_id') }}"
-                                    name="cashfree_vendor_id" id="cashfreeVendorId" placeholder="Ex: vendor_123">
+                                    name="cashfree_vendor_id" id="cashfreeVendorId" placeholder="Ex: ofinit_vendor (receives OfinIT's fee + GST)">
                             </div>
                         </div>
                         <div class="col-lg-4 col-md-6">

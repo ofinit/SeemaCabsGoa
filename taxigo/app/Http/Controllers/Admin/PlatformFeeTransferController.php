@@ -6,17 +6,17 @@ use App\Enums\Type;
 use App\Http\Controllers\Controller;
 use App\Models\FleetOperator;
 use App\Models\Payment;
-use App\Services\Payments\FleetPayoutService;
+use App\Services\Payments\PlatformFeeTransferService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 /**
- * Admin → Reports → Fleet Payouts: status of each paid booking's payout to the
- * fleet operator (Razorpay Route / Cashfree split), with retry.
+ * Admin → Reports → OfinIT Fee Transfers: status of each paid booking's
+ * transfer of OfinIT's fee + GST (Razorpay Route / Cashfree split), with retry.
  */
-class FleetPayoutController extends Controller
+class PlatformFeeTransferController extends Controller
 {
-    public function __construct(private readonly FleetPayoutService $payouts)
+    public function __construct(private readonly PlatformFeeTransferService $payouts)
     {
     }
 
@@ -44,7 +44,7 @@ class FleetPayoutController extends Controller
             'paid' => Payment::where('status', Type::PAID)->whereNotNull('transfer_reference')->count(),
         ];
 
-        return view('reports.fleet-payouts', compact('payments', 'filter', 'operator', 'counts'));
+        return view('reports.platform-fee-transfers', compact('payments', 'filter', 'operator', 'counts'));
     }
 
     public function retry(Payment $payment)
@@ -53,7 +53,7 @@ class FleetPayoutController extends Controller
         $booking = $payment->bookingDetails;
         abort_unless($booking, 404);
 
-        $result = $this->payouts->payout($booking, $payment, true);
+        $result = $this->payouts->transfer($booking, $payment, true);
 
         return back()->with($result['ok'] ? 'success' : 'error', $booking->booking_id . ': ' . $result['message']);
     }
@@ -69,9 +69,9 @@ class FleetPayoutController extends Controller
                 if (!$payment->bookingDetails) {
                     return;
                 }
-                $this->payouts->payout($payment->bookingDetails, $payment, true)['ok'] ? $ok++ : $failed++;
+                $this->payouts->transfer($payment->bookingDetails, $payment, true)['ok'] ? $ok++ : $failed++;
             });
 
-        return back()->with($failed ? 'error' : 'success', "Retried payouts from the last 60 days: {$ok} paid, {$failed} still failing (see the reason on each row).");
+        return back()->with($failed ? 'error' : 'success', "Retried OfinIT fee transfers from the last 60 days: {$ok} paid, {$failed} still failing (see the reason on each row).");
     }
 }

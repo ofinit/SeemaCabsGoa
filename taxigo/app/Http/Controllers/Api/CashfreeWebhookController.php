@@ -9,7 +9,7 @@ use App\Models\Payment;
 use App\Models\UserFcmToken;
 use App\Services\CashfreeService;
 use App\Services\Invoicing\InvoiceService;
-use App\Services\Payments\FleetPayoutService;
+use App\Services\Payments\PlatformFeeTransferService;
 use App\Services\NotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -136,10 +136,10 @@ class CashfreeWebhookController extends Controller
             }
             try {
                 if ($payment) {
-                    app(FleetPayoutService::class)->payout($booking->fresh(), $payment->fresh());
+                    app(PlatformFeeTransferService::class)->transfer($booking->fresh(), $payment->fresh());
                 }
             } catch (\Throwable $e) {
-                Log::error("Fleet payout record failed for {$booking->booking_id}: " . $e->getMessage());
+                Log::error("OfinIT fee transfer record failed for {$booking->booking_id}: " . $e->getMessage());
             }
         }
     }

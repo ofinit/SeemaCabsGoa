@@ -166,13 +166,17 @@ class CashfreeService
     /**
      * Create Refund via Cashfree
      */
-    public function createRefund(string $orderId, string $refundId, float $amount, string $note = 'Booking refund'): array
+    public function createRefund(string $orderId, string $refundId, float $amount, string $note = 'Booking refund', ?array $refundSplits = null): array
     {
         $payload = [
             'refund_id' => $refundId,
             'refund_amount' => round($amount, 2),
             'refund_note' => $note,
         ];
+        // Recover vendor (OfinIT) split amounts as part of the refund.
+        if (!empty($refundSplits)) {
+            $payload['refund_splits'] = $refundSplits;
+        }
 
         $response = Http::withHeaders($this->getHeaders())
             ->timeout(20)

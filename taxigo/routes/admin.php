@@ -21,7 +21,7 @@ use App\Http\Controllers\Admin\PaymentController;
 use App\Http\Controllers\Admin\RazorpayController;
 use App\Http\Controllers\Admin\BillingSettingsController;
 use App\Http\Controllers\Admin\InvoiceController;
-use App\Http\Controllers\Admin\FleetPayoutController;
+use App\Http\Controllers\Admin\PlatformFeeTransferController;
 use App\Http\Controllers\Admin\Reports\FleetOperatorPaymentController;
 use App\Http\Controllers\Admin\Reports\PaymentReconciliationController;
 use App\Http\Controllers\Admin\ScreenPriceController;
@@ -292,9 +292,9 @@ Route::group(['prefix' => 'admin', 'middleware' => ['auth', 'TwoFa'], 'as' => 'a
         Route::post('/list-refund', [FleetOperatorPaymentController::class, 'listRefund'])->name('list.refund');
         Route::get('/export', [FleetOperatorPaymentController::class, 'export'])->name('export');
         Route::get('/reconcile-cancelled-payments', [PaymentReconciliationController::class, 'index'])->name('reconcileCancelledPayments');
-        Route::get('/fleet-payouts', [FleetPayoutController::class, 'index'])->name('fleetPayouts');
-        Route::post('/fleet-payouts/retry-failed', [FleetPayoutController::class, 'retryFailed'])->name('fleetPayouts.retryFailed');
-        Route::post('/fleet-payouts/{payment}/retry', [FleetPayoutController::class, 'retry'])->name('fleetPayouts.retry');
+        Route::get('/ofinit-fee-transfers', [PlatformFeeTransferController::class, 'index'])->name('feeTransfers');
+        Route::post('/ofinit-fee-transfers/retry-failed', [PlatformFeeTransferController::class, 'retryFailed'])->name('feeTransfers.retryFailed');
+        Route::post('/ofinit-fee-transfers/{payment}/retry', [PlatformFeeTransferController::class, 'retry'])->name('feeTransfers.retry');
     });
 
     // Notification

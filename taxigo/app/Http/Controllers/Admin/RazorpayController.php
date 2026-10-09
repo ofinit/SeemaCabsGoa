@@ -71,16 +71,25 @@ class RazorpayController extends Controller
                 $refundId = 'ref_' . time() . '_' . rand(100, 999);
                 $refundAmount = (float) $paymentDetails->amount;
 
-                $refundResult = $cashfree->createRefund($orderId, $refundId, $refundAmount, 'Admin booking cancellation refund');
+                // OfinIT's split (fee + GST) is recovered with the refund.
+                $refundSplits = null;
+                $vendorId = \App\Models\FleetOperator::orderBy('id')->value('cashfree_vendor_id');
+                if ($vendorId && $paymentDetails->transfer_reference && (float) $paymentDetails->transfer_amount > 0) {
+                    $refundSplits = [['vendor_id' => $vendorId, 'amount' => round((float) $paymentDetails->transfer_amount, 2)]];
+                }
+                $refundResult = $cashfree->createRefund($orderId, $refundId, $refundAmount, 'Admin booking cancellation refund', $refundSplits);
                 $amount = $refundAmount;
             } else {
                 $payment = $this->razorpay->payment->fetch($paymentDetails->transaction_id);
                 Log::info(json_encode($payment));
 
                 $amountPaisa = $payment->amount;
-                $refund = $payment->refund([
-                    'amount' => $amountPaisa ? $amountPaisa : null
-                ]);
+                // Full refund: reverse_all also reverses the Route transfer of
+                // OfinIT's fee + GST, so the merchant isn't left paying it.
+                $refund = $payment->refund(array_filter([
+                    'amount' => $amountPaisa ? $amountPaisa : null,
+                    'reverse_all' => $paymentDetails->transfer_reference ? 1 : null,
+                ]));
 
                 if ($refund->status === 'error') {
                     return response()->json([

@@ -12,39 +12,38 @@ use Illuminate\Support\Facades\Log;
 use Razorpay\Api\Api;
 
 /**
- * Pays the fleet operator its share of a booking's online advance
- * (settlement `fleet_operator_total_payment`), through the gateway the
- * customer paid with:
+ * The fleet operator is the merchant: customers pay into the operator's own
+ * Razorpay / Cashfree account, and the operator keeps its share. Only
+ * OfinIT's platform fee + GST on it (settlement `platform_fee_total`, e.g.
+ * ₹120 + ₹21.60 = ₹141.60) is split out to OfinIT:
  *
- *   Razorpay — Route transfer from the payment to the operator's linked
- *              account (`fleet_operators.razorpay_account`).
- *   Cashfree — Easy Split to the operator's vendor (`cashfree_vendor_id`).
- *              Normally attached when the order is created; a retry uses
- *              Split After Payment (must be enabled on the Cashfree account).
+ *   Razorpay — Route transfer to OfinIT's linked account inside the
+ *              operator's Razorpay (`fleet_operators.razorpay_account`).
+ *   Cashfree — Easy Split to OfinIT as a vendor inside the operator's
+ *              Cashfree (`cashfree_vendor_id`), normally attached at order
+ *              creation; a retry uses Split After Payment.
  *
- * OfinIT's fee + its GST, and any ride GST in the advance, stay in the
- * merchant account. Idempotent: a recorded gateway reference means "done",
- * and existing Razorpay transfers on the payment are detected before
- * creating a new one.
+ * Idempotent: a recorded gateway reference means "done", and an existing
+ * Razorpay transfer to the same account is reused instead of paying twice.
  */
-class FleetPayoutService
+class PlatformFeeTransferService
 {
     /**
      * @return array{ok: bool, message: string}
      */
-    public function payout(BookingDetail $booking, ?Payment $payment = null, bool $isRetry = false): array
+    public function transfer(BookingDetail $booking, ?Payment $payment = null, bool $isRetry = false): array
     {
         $payment = $payment ?? Payment::where('booking_id', $booking->id)->where('status', Type::PAID)->orderBy('id')->first();
         if (!$payment || (int) $payment->status !== Type::PAID) {
             return ['ok' => false, 'message' => 'Booking is not paid.'];
         }
         if (!empty($payment->transfer_reference)) {
-            return ['ok' => true, 'message' => 'Already paid out (' . $payment->transfer_reference . ').'];
+            return ['ok' => true, 'message' => 'Already transferred (' . $payment->transfer_reference . ').'];
         }
 
-        $amount = $this->amountFor($payment);
+        $amount = self::amountFor($payment);
         if ($amount <= 0) {
-            return $this->record($payment, false, null, 0, 'No fleet-operator share on this booking.');
+            return $this->record($payment, false, null, 0, 'No OfinIT fee on this booking.');
         }
 
         $operator = FleetOperator::orderBy('id')->first();
@@ -57,17 +56,27 @@ class FleetPayoutService
                 ? $this->cashfree($payment, $operator, $amount, $isRetry)
                 : $this->razorpay($payment, $operator, $amount);
         } catch (\Throwable $e) {
-            Log::warning("Fleet payout failed for booking {$booking->booking_id}: " . $e->getMessage());
+            Log::warning("OfinIT fee transfer failed for booking {$booking->booking_id}: " . $e->getMessage());
 
             return $this->record($payment, false, null, $amount, $e->getMessage());
         }
+    }
+
+    /** OfinIT's fee + GST for a payment (legacy settlements: the fee alone). */
+    public static function amountFor(Payment $payment): float
+    {
+        $settlement = json_decode((string) $payment->amount_settlement, true) ?: [];
+        $raw = $settlement['platform_fee_total'] ?? $settlement['company_commission'] ?? 0;
+        $amount = (float) str_replace(',', '', (string) $raw);
+
+        return max(0, min(round($amount, 2), (float) $payment->amount));
     }
 
     private function razorpay(Payment $payment, FleetOperator $operator, float $amount): array
     {
         $account = trim((string) $operator->razorpay_account);
         if ($account === '') {
-            return $this->record($payment, false, null, $amount, 'Fleet operator has no Razorpay linked account (acc_…).');
+            return $this->record($payment, false, null, $amount, "OfinIT's Razorpay linked account (acc_…) is not set on the fleet operator.");
         }
         if (empty($payment->transaction_id) || !str_starts_with($payment->transaction_id, 'pay_')) {
             return $this->record($payment, false, null, $amount, 'No Razorpay payment id recorded for this booking.');
@@ -86,8 +95,8 @@ class FleetPayoutService
             return $this->record($payment, false, null, $amount, "Payment is {$rzpPayment->status}, not captured.");
         }
 
-        // A transfer may already exist (e.g. an earlier attempt succeeded but
-        // its response was misread) — reuse it rather than paying twice.
+        // An earlier attempt may have succeeded even though it was recorded as
+        // failed — reuse an existing transfer to OfinIT rather than paying twice.
         foreach ($rzpPayment->transfers()->items ?? [] as $existing) {
             if (($existing->recipient ?? null) === $account && !in_array($existing->status ?? '', ['failed', 'reversed'], true)) {
                 return $this->record($payment, true, $existing->id, ($existing->amount ?? 0) / 100, null);
@@ -96,14 +105,14 @@ class FleetPayoutService
 
         $paise = (int) round($amount * 100);
         if ($paise > (int) $rzpPayment->amount) {
-            return $this->record($payment, false, null, $amount, 'Payout exceeds the captured amount.');
+            return $this->record($payment, false, null, $amount, 'Transfer exceeds the captured amount.');
         }
 
         $result = $rzpPayment->transfer(['transfers' => [[
             'account' => $account,
             'amount' => $paise,
             'currency' => 'INR',
-            'notes' => ['booking_id' => (string) optional($payment->bookingDetails)->booking_id, 'purpose' => 'Fleet operator commission'],
+            'notes' => ['booking_id' => (string) optional($payment->bookingDetails)->booking_id, 'purpose' => 'OfinIT platform fee incl. GST'],
             'on_hold' => false,
         ]]]);
         $transfer = $result->items[0] ?? null;
@@ -118,7 +127,7 @@ class FleetPayoutService
     {
         $vendorId = trim((string) $operator->cashfree_vendor_id);
         if ($vendorId === '') {
-            return $this->record($payment, false, null, $amount, 'Fleet operator has no Cashfree vendor id.');
+            return $this->record($payment, false, null, $amount, "OfinIT's Cashfree vendor id is not set on the fleet operator.");
         }
         $orderId = $payment->pg_order_id ?: $payment->transaction_id;
         if (empty($orderId)) {
@@ -141,20 +150,12 @@ class FleetPayoutService
         // No split on the order: only an admin retry creates one after payment
         // (Cashfree asks for ~2 minutes after payment, and the feature must be enabled).
         if (!$isRetry) {
-            return $this->record($payment, false, null, $amount, 'Order was created without a vendor split; retry from Admin → Fleet Payouts.');
+            return $this->record($payment, false, null, $amount, 'Order was created without the OfinIT split; retry from Admin → Reports → OfinIT Fee Transfers.');
         }
 
         $cashfree->createSplit($orderId, [['vendor_id' => $vendorId, 'amount' => round($amount, 2)]]);
 
         return $this->record($payment, true, 'cf_split_after:' . $orderId, $amount, null);
-    }
-
-    private function amountFor(Payment $payment): float
-    {
-        $settlement = json_decode((string) $payment->amount_settlement, true) ?: [];
-        $amount = (float) str_replace(',', '', (string) ($settlement['fleet_operator_total_payment'] ?? 0));
-
-        return max(0, min(round($amount, 2), (float) $payment->amount));
     }
 
     private function record(Payment $payment, bool $ok, ?string $reference, float $amount, ?string $error): array
@@ -166,6 +167,6 @@ class FleetPayoutService
         $payment->transferred_at = $ok ? now() : null;
         $payment->save();
 
-        return ['ok' => $ok, 'message' => $ok ? "Paid ₹{$amount} to the fleet operator ({$reference})." : (string) $error];
+        return ['ok' => $ok, 'message' => $ok ? "Transferred ₹{$amount} to OfinIT ({$reference})." : (string) $error];
     }
 }
