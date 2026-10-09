@@ -133,8 +133,10 @@ system generates all sizes.
 |---|---|---|---|---|
 | P1 | Home hero carousel | PWA, apps | 2:1 · 1600×800 | Premium; max 5 rotating; auto-advance 5 s |
 | P2 | Home inline card | PWA, apps | 3:1 · 1500×500 | Between service tiles |
-| P3 | Finding-a-taxi (top) | PWA, apps | 4:5 · 1080×1350 | **Highest dwell time**, so premium price |
-| P4 | Finding-a-taxi (bottom) | PWA, apps | 3:1 · 1500×500 | |
+| P3 | Finding-a-taxi — top banner | PWA, apps | 3:1 · 1500×500 | Above the search progress; up to 3 rotating |
+| P4 | Finding-a-taxi — bottom banner | PWA, apps | 3:1 · 1500×500 | Below the progress; up to 3 rotating |
+| P12 | Finding-a-taxi — **large card (double size)** | PWA, apps | 4:5 · 1080×1350 | Replaces the top banner area when sold; up to 2 rotating; **highest dwell time** |
+| P13 | Finding-a-taxi — **full-screen takeover** | PWA, apps | 9:16 · 1080×1920 | **Exclusive: 1 advertiser per day.** Shown once per search while the system looks for a cab; close button after 3 s; closes itself the moment a cab is found; then the screen shows P12/P3 + P4 as usual |
 | P5 | Booking confirmed | PWA, apps | 2:1 · 1600×800 | Good for local offers near pickup or drop |
 | P6 | Driver details / trip in progress | PWA, apps | 3:1 · 1500×500 | Small; never covers the map, driver info or SOS |
 | P7 | Ride complete / rating | PWA, apps | 1:1 · 1080×1080 | After the rating is submitted, not before |
@@ -142,6 +144,19 @@ system generates all sizes.
 | P9 | Website landing pages (airport, route, sightseeing) | seemacabsgoa.com | 6:5 · 1200×1000 sidebar, 8:1 · 1600×200 strip | Contextual: e.g. Baga hotels on `panjim-to-baga-taxi` |
 | P10 | Booking email / invoice footer | Email | 4:1 · 1200×300 | Static image + tracked link |
 | P11 | Sponsored push (later) | Apps | Text + 2:1 image | Opt-in users only; max 1/week; strict review |
+| P14 | **Sightseeing package — sponsored stop** | PWA, apps, website | 3:1 · 1500×500 | On a package's detail page, e.g. a restaurant or spice farm on the North Goa tour route; contextual to that package |
+| P15 | **Airport arrival offers** | PWA, apps | 2:1 · 1600×800 | Booking-confirmed screen **for airport pickups only**: "Welcome to Goa" offers (hotels, scooter rentals, SIM cards, restaurants). High-intent tourists |
+| P16 | **App-open sponsor** | PWA, apps | 1:1 logo + one line | "Presented by …" on the splash screen for 1.5 s; **exclusive**, sold by the week or month |
+| P17 | Notifications screen card | PWA, apps | 3:1 · 1500×500 | Inline between notifications; low price |
+| P18 | **In-cab QR card** (offline) | Printed card in the cab | A6 card with a QR code | Seat-back or headrest card; the QR is a tracked `/ads/c/…` link, so scans show in the dashboard. Sold **per cab per month**; Seema prints and places the cards |
+
+**Finding-a-taxi screen rules:** at most one full-screen takeover per search;
+banners are hidden while it is open and count impressions only once visible;
+nothing ever covers the "Cab found" result or the booking details.
+
+**Not recommended** (kept ad-free): search results list (could be confused
+with real cab options), payment and OTP steps, trip-in-progress map, SOS, tax
+invoices and receipts, and the driver app.
 
 **No-ad zones, enforced in code:** OTP/login, payment and checkout steps, SOS
 and safety screens, the driver app, and error pages.
@@ -259,14 +274,22 @@ expensive at ₹100/day; Home is the cheapest at ₹10/day).
 
 | Placement | Visibility | Launch price / day | 7 days (−10%) | 30 days (−20%) |
 |---|---|---|---|---|
-| P1 Home hero carousel | Highest: every app open | **₹99** | ₹624 | ₹2,376 |
-| P3 Finding-a-taxi (top) | Long dwell while booking | **₹79** | ₹498 | ₹1,896 |
-| P9 Website landing pages (airport / route pages) | SEO visitors (tourists) | **₹79** per page group | ₹498 | ₹1,896 |
+| P13 Finding-a-taxi — full-screen takeover | Exclusive, whole screen during search | **₹199** | ₹1,254 | ₹4,776 |
+| P16 App-open sponsor ("Presented by") | Exclusive, every app open | **₹149** | ₹939 | ₹3,576 |
+| P1 Home hero carousel | Every app open | **₹99** | ₹624 | ₹2,376 |
+| P12 Finding-a-taxi — large card (double size) | Long dwell while booking | **₹99** | ₹624 | ₹2,376 |
+| P15 Airport arrival offers | Tourists just landed (airport pickups) | **₹79** | ₹498 | ₹1,896 |
+| P9 Website landing pages (per page group) | SEO visitors (tourists) | **₹79** | ₹498 | ₹1,896 |
+| P3 Finding-a-taxi — top banner | Long dwell while booking | **₹49** | ₹309 | ₹1,176 |
 | P5 Booking confirmed | Every paying customer | **₹49** | ₹309 | ₹1,176 |
+| P14 Sightseeing package — sponsored stop | Tour customers, per package | **₹49** | ₹309 | ₹1,176 |
+| P4 Finding-a-taxi — bottom banner | Long dwell while booking | **₹39** | ₹246 | ₹936 |
 | P7 Ride complete / rating | After each trip | **₹39** | ₹246 | ₹936 |
-| P2 Home inline, P4 Finding (bottom), P6 Driver details | Medium | **₹29** | ₹183 | ₹696 |
-| P8 Rides history & Account | Low | **₹19** | ₹120 | ₹456 |
-| **Bundle:** P1 + P3 + P5 | All booking touchpoints | **₹179** (vs ₹227) | ₹1,128 | ₹4,296 |
+| P2 Home inline, P6 Driver details | Medium | **₹29** | ₹183 | ₹696 |
+| P8 Rides history & Account, P17 Notifications | Low | **₹19** | ₹120 | ₹456 |
+| **Finding-a-taxi bundle:** P12 large + P4 bottom | The whole waiting screen except takeovers | **₹119** (vs ₹138) | ₹750 | ₹2,856 |
+| **Booking journey bundle:** P1 + P12 + P5 | Home, search and confirmation | **₹199** (vs ₹247) | ₹1,254 | ₹4,776 |
+| **P18 In-cab QR card** (offline) | Every passenger in the cab | **₹299 per cab per month** (printing included) | — | — |
 
 - **Peak season** (e.g. 15 Dec – 5 Jan, Shigmo, long weekends): × 1.5.
 - Minimum order **₹199** (before GST), so very small orders don't cost more
