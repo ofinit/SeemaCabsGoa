@@ -101,7 +101,7 @@ Add these under **Environment Variables**. Never commit a `.env` file.
 | `DB_DATABASE` / `DB_USERNAME` / `DB_PASSWORD` | `taxigo` / *(user and password from the Coolify MySQL page)* |
 | `MAIL_MAILER` | `smtp` |
 | `BROADCAST_DRIVER` | `log` |
-| `SESSION_DRIVER` | `file` |
+| `SESSION_DRIVER` | `database` (sessions survive deploys; needs the migrations) |
 | `SESSION_SECURE_COOKIE` | `true` |
 | `CACHE_DRIVER` | `file` |
 | `QUEUE_CONNECTION` | `sync` |
@@ -121,7 +121,6 @@ Under **Persistent Storage**:
 | Type | Destination path in container | Purpose |
 |---|---|---|
 | Volume | `/var/www/html/storage/app/public` | Uploaded images: driver documents, cab photos, banners. **Required**; without it, uploads are lost on every deploy. |
-| Volume | `/var/www/html/storage/framework/sessions` | Optional. Keeps admin and customer sessions alive across deploys. |
 | File | `/var/www/html/storage/app/firebase/firebase_credentials.json` | Paste the Firebase service-account JSON. Required for push notifications. |
 
 ### Copy the existing uploads into the volume
