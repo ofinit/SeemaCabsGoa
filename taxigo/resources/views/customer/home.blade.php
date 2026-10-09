@@ -26,8 +26,17 @@
                 </div>
             </a>
 
-            {{-- Rapid Route Chips --}}
-            <div class="flex flex-wrap gap-2 mt-2.5 py-0.5">
+            {{-- Rapid Route Chips: one horizontally scrolling row. Touch swipes
+                 natively; for mouse users the vertical wheel scrolls sideways and
+                 the row can be dragged (a drag never triggers the chip's link). --}}
+            <div class="flex gap-2 mt-2.5 overflow-x-auto no-scrollbar py-0.5" style="cursor: grab"
+                 x-data="{ down: false, moved: false, startX: 0, startLeft: 0 }"
+                 @wheel="const max = $el.scrollWidth - $el.clientWidth, next = Math.max(0, Math.min(max, $el.scrollLeft + $event.deltaY)); if (Math.abs($event.deltaY) > Math.abs($event.deltaX) && next !== $el.scrollLeft) { $event.preventDefault(); $el.scrollLeft = next }"
+                 @mousedown="down = true; moved = false; startX = $event.pageX; startLeft = $el.scrollLeft"
+                 @mousemove.window="if (down) { const dx = $event.pageX - startX; if (Math.abs(dx) > 5) moved = true; $el.scrollLeft = startLeft - dx }"
+                 @mouseup.window="down = false"
+                 @click.capture="if (moved) { $event.preventDefault(); $event.stopPropagation(); moved = false }"
+                 @dragstart.prevent>
                 <a href="{{ route('customer.book', ['trip' => 'airport', 'airportDirection' => 'drop', 'to' => '2']) }}" class="px-3 py-1.5 rounded-pill bg-white border border-black/[0.06] text-xs font-medium text-ink whitespace-nowrap hover:border-gold active:scale-95 transition flex items-center gap-1.5 shadow-sm">
                     <span>✈️</span> Mopa Airport (GOX)
                 </a>
