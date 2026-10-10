@@ -29,6 +29,11 @@ class AdTrackingController extends Controller
         $platform = in_array($request->query('p'), self::PLATFORMS, true) ? $request->query('p') : 'pwa';
         $screen = $request->filled('s') ? (int) $request->query('s') : null;
 
+        // Signed links live on in pushes, emails and cached pages: only forward while the ad
+        // is approved (not paused, rejected or cancelled).
+        if ($advertisement->approval_status !== Advertisement::APPROVED) {
+            return redirect('/')->header('Cache-Control', 'no-store');
+        }
         if (!AdServer::landingUrl($advertisement, $screen, $platform)) {
             abort(404);
         }

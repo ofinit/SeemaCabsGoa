@@ -329,6 +329,21 @@ class AdCampaignController extends Controller
             . ($refund > 0 ? ($campaign->refund_error ? ' Refund failed: ' . $campaign->refund_error : ' Refund of ' . AdCampaign::rupees($refund) . ' started.') : ''));
     }
 
+    /** Pay out a refund that failed earlier (also retried hourly by ads:maintain). */
+    public function retryRefund(AdCampaign $campaign)
+    {
+        $this->authorizeAdmin();
+        if ((int) $campaign->refund_due <= 0) {
+            return back()->with('error', 'No refund is owed on this ad.');
+        }
+        $refunded = $this->ads->settleRefund($campaign);
+        $campaign->refresh();
+
+        return back()->with($refunded ? 'success' : 'error', $refunded
+            ? 'Refunded ' . AdCampaign::rupees($refunded) . '.'
+            : 'Refund failed again: ' . ($campaign->refund_error ?: 'unknown error'));
+    }
+
     public function retryTransfer(AdCampaign $campaign, AdPaymentService $payments)
     {
         $this->authorizeAdmin();

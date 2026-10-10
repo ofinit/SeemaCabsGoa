@@ -436,6 +436,12 @@ class AdvertiseController extends Controller
         if ($error = $this->checklistError($request)) {
             return response()->json(['status' => false, 'message' => $error], 422);
         }
+        // Paid already on an earlier attempt (e.g. the confirmation didn't reach us)? Don't charge again.
+        if (!$campaign->isPaid() && ($paid = $payments->reconcile($campaign))) {
+            $campaign = $this->ads->paymentReceived($campaign, $paid['gateway'], $paid['transaction_id']);
+
+            return response()->json(['status' => true, 'data' => ['redirect' => route('customer.ads.show', $campaign)]]);
+        }
 
         try {
             $campaign = $this->ads->startCheckout($campaign);

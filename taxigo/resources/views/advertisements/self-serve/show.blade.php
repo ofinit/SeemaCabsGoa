@@ -254,6 +254,15 @@
                             <form method="POST" action="{{ route('admin.advertisements.selfServe.retryTransfer', $campaign) }}" class="d-inline">@csrf<button class="btn btn-sm btn-link p-0">Retry</button></form>
                         @else — @endif
                     </p>
+                    @if ($campaign->refund_due > 0)
+                        <div class="alert alert-danger py-2 my-2">Refund owed: <strong>{{ AdCampaign::rupees($campaign->refund_due) }}</strong> ({{ $campaign->refund_reason }}).
+                            Retried automatically every hour.
+                            <form method="POST" action="{{ route('admin.advertisements.selfServe.retryRefund', $campaign) }}" class="d-inline">@csrf<button class="btn btn-sm btn-danger ms-2">Retry refund now</button></form>
+                        </div>
+                    @endif
+                    @if (count(\App\Services\Ads\AdPaymentService::orders($campaign)) > 1)
+                        <p class="mb-1 text-muted">Gateway orders: @foreach (\App\Services\Ads\AdPaymentService::orders($campaign) as $o){{ $o['id'] }}{{ !empty($o['refunded']) ? ' (extra payment refunded)' : '' }}@if (!$loop->last), @endif @endforeach</p>
+                    @endif
                     @if ($campaign->refund_amount > 0 || $campaign->refund_error)
                         <p class="mb-1">Refund: {{ AdCampaign::rupees($campaign->refund_amount) }} {{ $campaign->refund_reference }} @if ($campaign->refund_error)<span class="text-danger">· {{ $campaign->refund_error }}</span>@endif</p>
                     @endif

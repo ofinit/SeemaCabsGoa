@@ -12,6 +12,7 @@ use App\Services\Ads\AdCampaignService;
 use App\Services\Ads\AdPaymentService;
 use App\Services\CashfreeService;
 use App\Services\Invoicing\InvoiceService;
+use App\Services\Payments\PaymentVerifier;
 use App\Services\Payments\PlatformFeeTransferService;
 use App\Services\NotificationService;
 use Illuminate\Http\Request;
@@ -89,23 +90,31 @@ class CashfreeWebhookController extends Controller
             return;
         }
 
-        // Extract booking_id from order_id format (e.g. CF_SCGOA0001_172713...)
+        // Booking orders are CF_<booking id>_<time>; booking ids keep their hyphen (CF_SC-GOA0001_…).
         $booking = null;
-        if (preg_match('/^CF_([A-Za-z0-9]+)_/', $orderId, $matches)) {
+        if (preg_match('/^CF_([A-Za-z0-9-]+)_\d+$/', $orderId, $matches)) {
             $extractedId = $matches[1];
-            // Format back to SC-GOAXXXX if needed
-            if (str_starts_with($extractedId, 'SCGOA')) {
-                $formattedBookingId = 'SC-GOA' . substr($extractedId, 5);
-                $booking = BookingDetail::where('booking_id', $formattedBookingId)->first();
-            }
-            if (!$booking) {
-                $booking = BookingDetail::where('booking_id', $extractedId)->first();
+            $booking = BookingDetail::where('booking_id', $extractedId)->first();
+            if (!$booking && str_starts_with($extractedId, 'SCGOA')) {
+                $booking = BookingDetail::where('booking_id', 'SC-GOA' . substr($extractedId, 5))->first();
             }
         }
 
-        // Check if Payment record already exists
-        $payment = Payment::where('transaction_id', $cfPaymentId)
-            ->orWhere('pg_order_id', $orderId)
+        // Confirm with Cashfree against the amount stored for the booking *before* this
+        // webhook writes anything (AGENTS.md: payment confirmation goes through PaymentVerifier).
+        if ($booking && (int) $booking->payment_status !== 1) {
+            $expected = (float) (Payment::where('booking_id', $booking->id)->orderBy('id')->value('amount') ?? $booking->part_payment);
+            $check = app(PaymentVerifier::class)->verify($booking, 'cashfree', $cfPaymentId ?: $orderId, $orderId, $expected);
+            if (!$check['ok']) {
+                Log::warning("Cashfree webhook: {$orderId} not confirmed for booking {$booking->booking_id}: {$check['message']}");
+                return;
+            }
+            $amount = (float) ($check['amount'] ?? $amount);
+        }
+
+        // Existing Payment row for this order (never match on an empty payment id).
+        $payment = Payment::where('pg_order_id', $orderId)
+            ->when($cfPaymentId !== '', fn ($q) => $q->orWhere('transaction_id', $cfPaymentId))
             ->first();
 
         if (!$payment) {
@@ -131,15 +140,7 @@ class CashfreeWebhookController extends Controller
             ]);
         }
 
-        if ($booking && $booking->payment_status != 1) {
-            $expected = (float) (Payment::where('booking_id', $booking->id)->where('pg_order_id', $orderId)->value('amount')
-                ?? Payment::where('booking_id', $booking->id)->orderBy('id')->value('amount')
-                ?? $booking->part_payment);
-            if ($amount + 1 < $expected) {
-                Log::warning("Cashfree webhook: {$orderId} paid ₹{$amount} but booking {$booking->booking_id} expects ₹{$expected}; not confirming.");
-                return;
-            }
-
+        if ($booking && (int) $booking->payment_status !== 1) {
             $booking->update([
                 'payment_status' => 1,
                 'status' => $booking->status == Type::UNPAID ? Type::PAID : $booking->status,

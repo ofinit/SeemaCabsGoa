@@ -21,7 +21,6 @@ use App\Services\Invoicing\InvoiceService;
 use App\Services\NotificationService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
@@ -64,16 +63,16 @@ class AdCampaignService
         if ($days < $min || $days > $max) {
             throw new RuntimeException("Book between {$min} and {$max} days.");
         }
+        // Paid campaigns keep their placements, dates and targeting while changes are requested.
+        $locked = $campaign && $campaign->isPaid();
         $start = Carbon::parse($startDate, 'Asia/Kolkata')->startOfDay();
-        if ($start->lt(now('Asia/Kolkata')->startOfDay())) {
+        if (!$locked && $start->lt(now('Asia/Kolkata')->startOfDay())) {
             throw new RuntimeException('The start date is in the past.');
         }
         $placements = AdPlacement::active()->whereIn('id', $placementIds)->get();
         if ($placements->isEmpty()) {
             throw new RuntimeException('Choose at least one placement.');
         }
-        // Paid campaigns keep their placements, dates and targeting while changes are requested.
-        $locked = $campaign && $campaign->isPaid();
         $targeting = AdTargeting::normalize((array) ($options['targeting'] ?? []));
         $headline = trim((string) ($options['headline'] ?? '')) ?: null;
         if ($headline !== null && mb_strlen($headline) > 40) {
@@ -212,6 +211,10 @@ class AdCampaignService
         if (in_array(strtolower(preg_replace('/^www\./', '', $parts['host'])), self::SHORTENERS, true)) {
             throw new RuntimeException('Link shorteners are not allowed. Use the full website address.');
         }
+        $host = strtolower(trim($parts['host'], '[]'));
+        if (isset($parts['user']) || $host === 'localhost' || (filter_var($host, FILTER_VALIDATE_IP) && !AdLinkChecker::isPublicIp($host))) {
+            throw new RuntimeException('Enter your public website address.');
+        }
 
         return $value;
     }
@@ -291,8 +294,10 @@ class AdCampaignService
         if ($problems = $this->problems($campaign)) {
             throw new RuntimeException(implode(' ', $problems));
         }
+        // Automated checks open the advertiser's link: do it before taking the placement locks.
+        $flags = $this->autoFlags($campaign);
 
-        return DB::transaction(function () use ($campaign) {
+        return DB::transaction(function () use ($campaign, $flags) {
             // Lock the placements so two advertisers can't take the last slot together.
             $placements = AdPlacement::whereIn('id', $campaign->items->pluck('placement_id'))->lockForUpdate()->get();
             [$from, $to] = [$campaign->start_date->toDateString(), $campaign->end_date->toDateString()];
@@ -316,7 +321,6 @@ class AdCampaignService
             }
             $campaign->fill(AdPricing::campaignColumns($quote));
             $this->syncItems($campaign, $placements, $quote);
-            $flags = $this->autoFlags($campaign);
             $campaign->forceFill([
                 'status' => AdCampaign::PENDING_PAYMENT,
                 'hold_expires_at' => now()->addMinutes((int) AdSettings::get(AdSettings::HOLD_MINUTES)),
@@ -332,21 +336,29 @@ class AdCampaignService
     public function paymentReceived(AdCampaign $campaign, string $gateway, string $transactionId): AdCampaign
     {
         $justPaid = false;
-        $campaign = DB::transaction(function () use ($campaign, $gateway, $transactionId, &$justPaid) {
+        $refundReason = null;
+        $campaign = DB::transaction(function () use ($campaign, $gateway, $transactionId, &$justPaid, &$refundReason) {
             $campaign = AdCampaign::whereKey($campaign->id)->lockForUpdate()->first();
             if ($campaign->isPaid()) {
                 return $campaign;
+            }
+            // The money arrived after the ad was cancelled, or after its hold ran out and
+            // someone else took the slot: record it and give it back.
+            if (!in_array($campaign->status, [AdCampaign::PENDING_PAYMENT, AdCampaign::DRAFT], true)) {
+                $refundReason = 'Ad was cancelled before the payment completed';
+            } elseif ($this->slotProblem($campaign)) {
+                $refundReason = 'The slot was booked by someone else while you were paying';
             }
             $campaign->forceFill([
                 'payment_gateway' => $gateway,
                 'transaction_id' => $transactionId,
                 'paid_at' => now(),
                 'hold_expires_at' => null,
-                'status' => AdCampaign::IN_REVIEW,
-                'submitted_at' => now(),
+                'status' => $refundReason ? AdCampaign::CANCELLED : AdCampaign::IN_REVIEW,
+                'submitted_at' => $refundReason ? $campaign->submitted_at : now(),
             ])->save();
             $justPaid = true;
-            if ($campaign->coupon_id) {
+            if ($campaign->coupon_id && !$refundReason) {
                 AdCoupon::whereKey($campaign->coupon_id)->increment('used');
             }
 
@@ -361,20 +373,47 @@ class AdCampaignService
         } catch (\Throwable $e) {
             Log::error("Ad invoice failed for {$campaign->reference}: " . $e->getMessage());
         }
+
+        if ($refundReason) {
+            $refunded = $this->refundAndCredit($campaign, (int) $campaign->total_amount, $refundReason);
+            $this->notify($campaign, 'Payment refunded', "Ad {$campaign->reference}: {$refundReason}. "
+                . ($refunded ? 'Your payment of ' . AdCampaign::rupees($refunded) . ' is being refunded (5–7 working days).' : 'We will refund your payment shortly.'));
+
+            return $campaign->fresh();
+        }
+
         try {
             $this->payments->transfer($campaign);
         } catch (\Throwable $e) {
             Log::error("OfinIT ad share transfer failed for {$campaign->reference}: " . $e->getMessage());
         }
 
-        // Renewals with an unchanged creative and link go live without another review.
-        if ($campaign->auto_approve && $campaign->renewedFrom && in_array($campaign->renewedFrom->status, [AdCampaign::APPROVED, AdCampaign::EXPIRED, AdCampaign::PAUSED], true)) {
+        // Renewals with an unchanged creative and link go live without another review —
+        // only if the previous ad ended normally (not paused for reports, licence or link)
+        // and it doesn't need a second admin.
+        $previous = $campaign->renewedFrom;
+        if ($campaign->auto_approve && $previous && !$campaign->needs_second_approval && $previous->paused_reason === null
+            && in_array($previous->status, [AdCampaign::APPROVED, AdCampaign::EXPIRED], true)) {
             $this->finalApproval($campaign, null, 'Renewal with the same creative and link');
         } else {
             $this->notify($campaign, 'Ad submitted for review', "Thanks! Your ad {$campaign->reference} is paid and in review. We'll get back to you within 24 hours.");
         }
 
         return $campaign->fresh();
+    }
+
+    /** Is any booked placement-day (or the category exclusivity) no longer free for this campaign? */
+    private function slotProblem(AdCampaign $campaign): bool
+    {
+        $campaign->loadMissing('items.placement', 'advertiser');
+        $placements = $campaign->items->pluck('placement');
+        if ($placements->isEmpty() || !$campaign->start_date) {
+            return false;
+        }
+        [$from, $to] = [$campaign->start_date->toDateString(), $campaign->end_date->toDateString()];
+
+        return (bool) AdAvailability::conflicts($placements, $from, $to, $campaign->id, (array) ($campaign->targeting['page_groups'] ?? []), self::unitsFor($placements, $campaign->targeting))
+            || ($campaign->advertiser->category_id && AdAvailability::categoryConflicts($placements, $from, $to, (int) $campaign->advertiser->category_id, (bool) $campaign->exclusive_category, $campaign->id));
     }
 
     /** Advertiser resubmits after "changes requested" (no new payment). */
@@ -424,13 +463,11 @@ class AdCampaignService
             $flags[] = 'Same image used by another advertiser';
         }
         if ($campaign->landing_type === 'website') {
-            try {
-                $response = Http::timeout(6)->withOptions(['allow_redirects' => ['max' => 5]])->get($campaign->landing_url);
-                if ($response->failed()) {
-                    $flags[] = 'Link returned HTTP ' . $response->status();
-                }
-            } catch (\Throwable $e) {
+            $status = AdLinkChecker::status($campaign->landing_url, 6);
+            if ($status === null) {
                 $flags[] = 'Link could not be opened';
+            } elseif ($status >= 400 && !in_array($status, [401, 403, 405, 429], true)) {
+                $flags[] = 'Link returned HTTP ' . $status;
             }
         }
 
@@ -555,11 +592,16 @@ class AdCampaignService
         $campaign->forceFill([
             'status' => $pause ? AdCampaign::PAUSED : AdCampaign::APPROVED,
             'paused_reason' => $pause ? ($reason ?? 'admin') : null,
-        ])->save();
+        ] + ($pause ? [] : ['link_failures' => 0]))->save();
         $this->setServing($campaign, $pause ? Advertisement::PAUSED : Advertisement::APPROVED, $adminId, $note);
         $this->log($campaign, $adminId ?? 0, $adminId ? 'first' : 'system', $pause ? 'pause' : 'resume', [], [], $note);
         if ($pause && $reason) {
-            $this->notify($campaign, 'Your ad is paused', "Ad {$campaign->reference} is paused: {$note} Contact us or fix it in the app to resume.");
+            $after = match ($reason) {
+                'link' => 'Once the link opens again, the ad resumes automatically (we check daily).',
+                'licence' => 'Upload the renewed licence in the app and the ad resumes automatically within an hour.',
+                default => 'Our team will review it and let you know.',
+            };
+            $this->notify($campaign, 'Your ad is paused', "Ad {$campaign->reference} is paused: {$note} {$after}");
         }
 
         return $campaign;
@@ -574,18 +616,42 @@ class AdCampaignService
         $campaign->forceFill(['status' => AdCampaign::CANCELLED, 'hold_expires_at' => null])->save();
     }
 
+    /**
+     * Refund now, or — if the gateway call fails — keep the amount as owed
+     * (`refund_due`) so the hourly job and the admin "Retry refund" button
+     * can finish it.
+     */
     private function refundAndCredit(AdCampaign $campaign, int $amount, string $reason): int
     {
         if (!$campaign->isPaid() || $amount <= 0) {
             return 0;
         }
+        $amount = min($amount, (int) $campaign->total_amount - (int) $campaign->refund_amount);
+        if ($amount <= 0) {
+            return 0;
+        }
+        $campaign->forceFill(['refund_due' => $amount, 'refund_reason' => mb_substr($reason, 0, 100)])->save();
+
+        return $this->settleRefund($campaign);
+    }
+
+    /** Try to pay out the refund still owed on a campaign. Returns the amount refunded. */
+    public function settleRefund(AdCampaign $campaign): int
+    {
+        $due = (int) $campaign->refund_due;
+        if ($due <= 0) {
+            return 0;
+        }
+        $reason = $campaign->refund_reason ?: 'Ad refund';
         try {
-            $refunded = $this->payments->refund($campaign, $amount, $reason . ' — ' . $campaign->reference);
+            $refunded = $this->payments->refund($campaign, $due, $reason . ' — ' . $campaign->reference);
         } catch (\Throwable $e) {
             Log::error("Ad refund failed for {$campaign->reference}: " . $e->getMessage());
 
             return 0;
         }
+        // Nothing left to refund (already refunded in full) also clears what was owed.
+        $campaign->forceFill(['refund_due' => $refunded > 0 ? max(0, $due - $refunded) : 0])->save();
         try {
             $this->invoices->adCreditNote($campaign, $refunded, $reason);
         } catch (\Throwable $e) {
@@ -742,19 +808,31 @@ class AdCampaignService
 
         // Payments the browser never confirmed (closed tab, network drop).
         $recovered = 0;
-        AdCampaign::where('status', AdCampaign::PENDING_PAYMENT)->whereNull('paid_at')->whereNotNull('pg_order_id')
+        AdCampaign::whereIn('status', [AdCampaign::PENDING_PAYMENT, AdCampaign::DRAFT, AdCampaign::CANCELLED])->whereNull('paid_at')->whereNotNull('pg_order_id')
             ->where('updated_at', '>', now()->subDays(3))->get()
             ->each(function (AdCampaign $campaign) use (&$recovered) {
-                if ($transactionId = $this->payments->reconcile($campaign)) {
-                    $this->paymentReceived($campaign, $campaign->payment_gateway, $transactionId);
+                if ($paid = $this->payments->reconcile($campaign)) {
+                    $this->paymentReceived($campaign, $paid['gateway'], $paid['transaction_id']);
                     $recovered++;
                 }
+            });
+
+        // Refunds that failed earlier, and extra payments on a campaign's other orders.
+        $refunds = 0;
+        AdCampaign::where('refund_due', '>', 0)->whereNotNull('paid_at')->limit(50)->get()
+            ->each(function (AdCampaign $campaign) use (&$refunds) {
+                $refunds += $this->settleRefund($campaign) > 0 ? 1 : 0;
+            });
+        AdCampaign::whereNotNull('paid_at')->whereNotNull('pg_orders')->where('updated_at', '>', now()->subDays(3))->get()
+            ->filter(fn ($c) => count(AdPaymentService::orders($c)) > 1)
+            ->each(function (AdCampaign $campaign) use (&$refunds) {
+                $refunds += $this->payments->refundStrays($campaign);
             });
 
         $stale = AdCampaign::whereIn('status', [AdCampaign::DRAFT, AdCampaign::PENDING_PAYMENT])->whereNull('paid_at')
             ->where('updated_at', '<', now()->subDays(14))->update(['status' => AdCampaign::CANCELLED, 'hold_expires_at' => null]);
 
-        return compact('expired', 'reminded', 'recovered', 'stale', 'licences', 'links', 'pushes');
+        return compact('expired', 'reminded', 'recovered', 'stale', 'licences', 'links', 'pushes', 'refunds');
     }
 
     /**
@@ -765,6 +843,16 @@ class AdCampaignService
     {
         $today = now('Asia/Kolkata')->toDateString();
         $paused = 0;
+        // Paused for an expired licence and a valid one is now on file: resume.
+        AdCampaign::with('advertiser.licences')->where('status', AdCampaign::PAUSED)->where('paused_reason', 'licence')
+            ->where('end_date', '>=', $today)->get()
+            ->each(function (AdCampaign $campaign) use ($today) {
+                if ($campaign->advertiser->hasLicenceValidUntil($today)) {
+                    $this->pause($campaign, null, false, 'Valid licence on file');
+                    $this->notify($campaign, 'Your ad is live again', "Thanks for the renewed licence — ad {$campaign->reference} is showing again.");
+                }
+            });
+
         AdCampaign::with('advertiser.category', 'advertiser.licences')->where('status', AdCampaign::APPROVED)->get()
             ->filter(fn ($c) => optional($c->advertiser->category)->licence_required)
             ->each(function (AdCampaign $campaign) use ($today, &$paused) {
@@ -785,10 +873,21 @@ class AdCampaignService
         return $paused;
     }
 
-    /** Daily link check (plan §11): two failures in a row pause the ad. */
+    /** Daily link check (plan §11): two failures in a row pause the ad; a working link resumes it. */
     private function checkLinks(): int
     {
         $paused = 0;
+        AdCampaign::where('status', AdCampaign::PAUSED)->where('paused_reason', 'link')
+            ->where('end_date', '>=', now('Asia/Kolkata')->toDateString())
+            ->where(fn ($q) => $q->whereNull('link_checked_at')->orWhere('link_checked_at', '<', now()->subHours(23)))
+            ->limit(50)->get()
+            ->each(function (AdCampaign $campaign) {
+                $campaign->forceFill(['link_checked_at' => now()])->save();
+                if (self::linkWorks($campaign->landing_url)) {
+                    $this->pause($campaign, null, false, 'Link opens again');
+                    $this->notify($campaign, 'Your ad is live again', "The link for ad {$campaign->reference} opens again, so the ad is showing again.");
+                }
+            });
         AdCampaign::where('status', AdCampaign::APPROVED)->where('landing_type', 'website')
             ->where(fn ($q) => $q->whereNull('link_checked_at')->orWhere('link_checked_at', '<', now()->subHours(23)))
             ->limit(50)->get()
@@ -807,17 +906,9 @@ class AdCampaignService
 
     public static function linkWorks(?string $url): bool
     {
-        if (!$url) {
-            return false;
-        }
-        try {
-            $response = Http::timeout(10)->withOptions(['allow_redirects' => ['max' => 5]])
-                ->withHeaders(['User-Agent' => 'Mozilla/5.0 (SeemaCabsGoa link check)'])->get($url);
+        $status = AdLinkChecker::status($url, 10);
 
-            return $response->status() < 400 || in_array($response->status(), [401, 403, 405, 429], true);
-        } catch (\Throwable $e) {
-            return false;
-        }
+        return $status !== null && ($status < 400 || in_array($status, [401, 403, 405, 429], true));
     }
 
     /**

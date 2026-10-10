@@ -307,6 +307,7 @@ Route::group(['prefix' => 'admin', 'middleware' => ['auth', 'TwoFa'], 'as' => 'a
             Route::post('/{campaign}/pause', 'pause')->whereNumber('campaign')->name('pause');
             Route::post('/{campaign}/cancel', 'cancel')->whereNumber('campaign')->name('cancel');
             Route::post('/{campaign}/retry-transfer', 'retryTransfer')->whereNumber('campaign')->name('retryTransfer');
+            Route::post('/{campaign}/retry-refund', 'retryRefund')->whereNumber('campaign')->name('retryRefund');
         });
 
         // Screen Price

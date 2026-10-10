@@ -706,6 +706,7 @@ function adWizard() {
                 if (!this.locked) await this.saveDraft();
                 const res = await apiFetch(routes.base + '/' + this.campaign.id + '/checkout', { method: 'POST', body: { gateway: this.gateway, checklist: this.ticks } });
                 const order = res.data;
+                if (order.redirect) { window.location.href = order.redirect; return; }
                 if (this.gateway === 'cashfree') {
                     const cashfree = Cashfree({ mode: order.mode || this.pg.cashfree_mode });
                     cashfree.checkout({ paymentSessionId: order.payment_session_id, redirectTarget: '_modal' }).then(async (result) => {
