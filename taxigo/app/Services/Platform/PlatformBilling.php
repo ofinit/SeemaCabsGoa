@@ -2,14 +2,12 @@
 
 namespace App\Services\Platform;
 
-use App\Enums\Type;
 use App\Mail\PlatformBillingMail;
 use App\Models\AdCampaign;
 use App\Models\BusinessProfile;
 use App\Models\Invoice;
 use App\Models\Payment;
 use App\Models\SettingChange;
-use App\Models\User;
 use App\Services\Invoicing\InvoiceService;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -210,20 +208,11 @@ class PlatformBilling
      */
     public function hourly(): array
     {
-        $paid = 0;
-        if (PlatformSettings::razorpayConfigured()) {
-            foreach (self::unpaid()->whereNotNull('payment_link_id')->get() as $invoice) {
-                try {
-                    $paid += $this->refreshLink($invoice) ? 1 : 0;
-                } catch (\Throwable $e) {
-                    Log::info("Payment link check skipped for {$invoice->number}: " . $e->getMessage());
-                }
-            }
-        }
+        $paid = $this->checkLinks();
         $notices = $this->sendNotices();
 
         $suspended = false;
-        if (PlatformSettings::mode() === PlatformSettings::INVOICE && PlatformSettings::autoSuspend() && !PlatformSettings::suspended()) {
+        if (PlatformSettings::mode() === PlatformSettings::INVOICE && !PlatformSettings::suspended()) {
             // Only invoices Seema was actually sent count towards suspension.
             $overdue = self::overdue()->filter(fn ($i) => ($i->notices_sent & self::NOTICE_ISSUED) === self::NOTICE_ISSUED);
             if ($overdue->isNotEmpty()) {
@@ -233,6 +222,28 @@ class PlatformBilling
         }
 
         return compact('paid', 'notices', 'suspended');
+    }
+
+    /**
+     * Ask Razorpay about every unpaid payment link; a captured payment marks the
+     * invoice paid and restores the service at once. Runs every minute as the
+     * backup for the payment_link.paid webhook.
+     */
+    public function checkLinks(): int
+    {
+        if (!PlatformSettings::razorpayConfigured()) {
+            return 0;
+        }
+        $paid = 0;
+        foreach (self::unpaid()->whereNotNull('payment_link_id')->get() as $invoice) {
+            try {
+                $paid += $this->refreshLink($invoice) ? 1 : 0;
+            } catch (\Throwable $e) {
+                Log::info("Payment link check skipped for {$invoice->number}: " . $e->getMessage());
+            }
+        }
+
+        return $paid;
     }
 
     /** Issue email, reminder on the 3rd, final reminder on the 5th (09:00 IST onwards). */
@@ -291,11 +302,17 @@ class PlatformBilling
         $this->mailSeema('restored', collect());
     }
 
-    /** Seema Holidays' billing contacts: supplier profile email + fleet operator logins. */
+    /**
+     * Where Seema's billing emails go: the addresses OfinIT entered on the
+     * Billing page, or else Seema's business-profile email. Never every
+     * fleet-operator login.
+     */
     public static function seemaEmails(): array
     {
-        return collect([BusinessProfile::supplier()?->email])
-            ->merge(User::where('type', Type::FleetOperator)->whereNotNull('email')->pluck('email'))
+        $configured = array_filter(preg_split('/[,;\s]+/', (string) PlatformSettings::get(PlatformSettings::BILLING_EMAILS, '')));
+
+        return collect($configured ?: [BusinessProfile::supplier()?->email])
+            ->map(fn ($e) => strtolower(trim((string) $e)))
             ->filter(fn ($e) => filter_var($e, FILTER_VALIDATE_EMAIL))->unique()->values()->all();
     }
 

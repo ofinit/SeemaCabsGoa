@@ -122,12 +122,11 @@
                             <label class="form-check mt-2"><input class="form-check-input" type="radio" name="mode" value="split" @checked($mode === 'split')>
                                 <span class="form-check-label"><strong>Gateway split / Route</strong> — OfinIT's share is split out at Razorpay / Cashfree on every payment (needs the split feature enabled on Seema's gateway accounts).</span></label>
                         </div>
+                        <p class="small text-muted">Suspension and restore are automatic: anything unpaid on the 6th suspends the website and app; the service comes back the moment Razorpay captures the payment (or OfinIT records a bank payment).</p>
                         <div class="mb-3">
-                            <label class="form-label small mb-0">Suspend automatically when an invoice is unpaid after the 5th</label>
-                            <select class="form-select form-select-sm" name="auto_suspend">
-                                <option value="1" @selected($autoSuspend)>Yes</option>
-                                <option value="0" @selected(!$autoSuspend)>No — I'll suspend manually</option>
-                            </select>
+                            <label class="form-label small mb-0">Seema billing emails (invoices, payment links, reminders)</label>
+                            <input class="form-control form-control-sm" name="billing_emails" value="{{ old('billing_emails', $billingEmails) }}" placeholder="accounts@seemaholidays.com, owner@…">
+                            <span class="small text-muted">Separate with commas. Empty = Seema's business-profile email.</span>
                         </div>
                         <h6 class="mt-4">OfinIT's Razorpay account (payment links)</h6>
                         <p class="small text-muted">Used only on the server to create and check a payment link for each invoice. Never shown on the website.</p>
@@ -144,7 +143,7 @@
                 <div class="card">
                     <div class="card-header"><h5 class="mb-0">Actions <span class="badge bg-light-secondary">OfinIT only</span></h5></div>
                     <div class="card-body">
-                        <p class="small mb-1">Billing emails go to: {{ $seemaEmails ? implode(', ', $seemaEmails) : '— none (add an email to Seema\'s business profile)' }}</p>
+                        <p class="small mb-1">Billing emails go to: {!! $seemaEmails ? e(implode(', ', $seemaEmails)) : '<span class="text-danger">none — enter Seema\'s billing email in the settings</span>' !!}</p>
                         @if ($drafts->isNotEmpty())
                             <p class="small text-danger">Draft invoices waiting to be issued: {{ $drafts->count() }} — usually because a business profile is incomplete.</p>
                         @endif
@@ -153,20 +152,8 @@
                             <input class="form-control form-control-sm" type="month" name="month" value="{{ now('Asia/Kolkata')->subMonthNoOverflow()->format('Y-m') }}" style="max-width:170px">
                             <button class="btn btn-sm btn-secondary">Issue invoices &amp; payment links now</button>
                         </form>
-                        @if ($suspended)
-                            <form method="POST" action="{{ route('admin.platformBilling.restore') }}" onsubmit="return confirm('Restore the service now?')">
-                                @csrf
-                                <input type="hidden" name="reason" value="Restored by admin">
-                                <button class="btn btn-success">Restore service now</button>
-                            </form>
-                        @else
-                            <form method="POST" action="{{ route('admin.platformBilling.suspend') }}" class="d-flex gap-2" onsubmit="return confirm('Suspend the website and app now?')">
-                                @csrf
-                                <input class="form-control form-control-sm" name="reason" placeholder="Reason" required>
-                                <button class="btn btn-sm btn-danger">Suspend now</button>
-                            </form>
-                        @endif
-                        @if ($suspendedReason)<p class="small text-muted mt-2 mb-0">Last change: {{ $suspendedReason }}</p>@endif
+                        <p class="small mb-0">Service: <strong class="{{ $suspended ? 'text-danger' : 'text-success' }}">{{ $suspended ? 'suspended' : 'active' }}</strong>
+                            @if ($suspendedReason) <span class="text-muted">· last change: {{ $suspendedReason }}</span>@endif</p>
                     </div>
                 </div>
             </div>

@@ -13,12 +13,14 @@ use Illuminate\Support\Facades\Crypt;
  *    `invoice` (Seema collects everything; OfinIT invoices monthly)
  *  - OfinIT's own Razorpay keys, used only on the server to create and check
  *    the payment link for each invoice (encrypted at rest)
- *  - suspension state
+ *  - suspension state (automatic: suspended on the 6th if unpaid, restored
+ *    the moment the payment is captured)
+ *  - where Seema's billing emails go
  */
 class PlatformSettings
 {
     public const MODE = 'platform_settlement_mode';
-    public const AUTO_SUSPEND = 'platform_auto_suspend';
+    public const BILLING_EMAILS = 'platform_billing_emails';
     public const SUSPENDED = 'platform_suspended';
     public const SUSPENDED_AT = 'platform_suspended_at';
     public const SUSPENDED_REASON = 'platform_suspended_reason';
@@ -37,7 +39,7 @@ class PlatformSettings
     public static function get(string $key, ?string $default = null): ?string
     {
         self::$cache ??= Environment::whereIn('title', [
-            self::MODE, self::AUTO_SUSPEND, self::SUSPENDED, self::SUSPENDED_AT, self::SUSPENDED_REASON,
+            self::MODE, self::BILLING_EMAILS, self::SUSPENDED, self::SUSPENDED_AT, self::SUSPENDED_REASON,
             self::RZP_KEY, self::RZP_SECRET, self::RZP_WEBHOOK_SECRET,
         ])->pluck('value', 'title')->all();
 
@@ -70,11 +72,6 @@ class PlatformSettings
     public static function splitsEnabled(): bool
     {
         return self::mode() === self::SPLIT;
-    }
-
-    public static function autoSuspend(): bool
-    {
-        return self::get(self::AUTO_SUSPEND, '1') === '1';
     }
 
     public static function suspended(): bool

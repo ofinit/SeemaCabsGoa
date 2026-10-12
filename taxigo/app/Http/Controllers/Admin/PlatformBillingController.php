@@ -45,7 +45,7 @@ class PlatformBillingController extends Controller
             'suspendedAt' => PlatformSettings::get(PlatformSettings::SUSPENDED_AT),
             'suspendedReason' => PlatformSettings::get(PlatformSettings::SUSPENDED_REASON),
             'mode' => PlatformSettings::mode(),
-            'autoSuspend' => PlatformSettings::autoSuspend(),
+            'billingEmails' => PlatformSettings::get(PlatformSettings::BILLING_EMAILS, ''),
             'razorpayKey' => PlatformSettings::get(PlatformSettings::RZP_KEY),
             'razorpayReady' => PlatformSettings::razorpayConfigured(),
             'webhookReady' => (bool) PlatformSettings::secret(PlatformSettings::RZP_WEBHOOK_SECRET),
@@ -67,13 +67,19 @@ class PlatformBillingController extends Controller
         $this->authorizeAdmin();
         $data = $request->validate([
             'mode' => 'required|in:split,invoice',
-            'auto_suspend' => 'required|in:0,1',
+            'billing_emails' => 'nullable|string|max:500',
             'razorpay_key' => ['nullable', 'string', 'max:60', 'regex:/^rzp_(live|test)_[A-Za-z0-9]+$/'],
             'razorpay_secret' => 'nullable|string|max:100',
             'webhook_secret' => 'nullable|string|max:100',
         ]);
+        $emails = array_values(array_filter(array_map('trim', preg_split('/[,;\s]+/', (string) ($data['billing_emails'] ?? '')))));
+        foreach ($emails as $email) {
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                return back()->with('error', "\"{$email}\" is not a valid email address.")->withInput();
+            }
+        }
         PlatformSettings::set(PlatformSettings::MODE, $data['mode']);
-        PlatformSettings::set(PlatformSettings::AUTO_SUSPEND, $data['auto_suspend']);
+        PlatformSettings::set(PlatformSettings::BILLING_EMAILS, implode(', ', array_unique(array_map('strtolower', $emails))));
         if (!empty($data['razorpay_key'])) {
             PlatformSettings::set(PlatformSettings::RZP_KEY, $data['razorpay_key']);
         }
@@ -96,22 +102,6 @@ class PlatformBillingController extends Controller
         return back()->with($result['problems'] ? 'error' : 'success', trim($message . ($result['problems'] ? ' Problems: ' . implode(' | ', $result['problems']) : '')));
     }
 
-    public function suspend(Request $request)
-    {
-        $this->authorizeAdmin();
-        $data = $request->validate(['reason' => 'required|string|max:200']);
-        $this->billing->suspend(Auth::id(), $data['reason']);
-
-        return back()->with('success', 'Service suspended. Only the admin and fleet operator Billing logins work now.');
-    }
-
-    public function restore(Request $request)
-    {
-        $this->authorizeAdmin();
-        $this->billing->restore(Auth::id(), (string) $request->input('reason', 'Restored by admin'));
-
-        return back()->with('success', 'Service restored.');
-    }
 
     public function recordPayment(Request $request, Invoice $invoice)
     {

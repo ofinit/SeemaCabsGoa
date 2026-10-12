@@ -256,8 +256,6 @@ Route::group(['prefix' => 'admin', 'middleware' => ['auth', 'TwoFa', 'admin.only
     Route::prefix('platform-billing')->name('platformBilling.')->controller(\App\Http\Controllers\Admin\PlatformBillingController::class)->group(function () {
         Route::post('/settings', 'saveSettings')->name('settings');
         Route::post('/run', 'run')->name('run');
-        Route::post('/suspend', 'suspend')->name('suspend');
-        Route::post('/restore', 'restore')->name('restore');
         Route::post('/invoices/{invoice}/paid', 'recordPayment')->name('recordPayment');
         Route::post('/invoices/{invoice}/link', 'createLink')->name('createLink');
         Route::post('/invoices/{invoice}/check', 'checkLink')->name('checkLink');
