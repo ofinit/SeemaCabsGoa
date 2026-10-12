@@ -124,6 +124,11 @@ Under **Persistent Storage**:
 | File | `/var/www/html/storage/app/firebase/firebase_credentials.json` | Paste the Firebase service-account JSON. Required for push notifications. |
 | Volume | `/var/www/html/storage/app/ads` | Self-serve ads: advertisers' licence documents and original ad images. **Private** (never served publicly). **Required** once self-serve ads are on. |
 
+If the ads volume was created before the image made `storage/app/ads`, it is
+owned by root and uploads fail with "Unable to create a directory at
+/var/www/html/storage/app/ads/originals". Fix once on the server:
+`docker exec -u root <container> chown -R 33:33 /var/www/html/storage/app/ads`.
+
 ### Copy the existing uploads into the volume
 
 After the first deploy has created the volume, copy the old

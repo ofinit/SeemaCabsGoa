@@ -26,6 +26,11 @@ RUN composer install --no-dev --no-interaction --no-scripts --no-autoloader --pr
 COPY --chown=www-data:www-data taxigo/ ./
 RUN composer dump-autoload --optimize --no-dev
 
+# Private ad files (licences, original images) live on their own Coolify
+# volume. Creating the folders here, owned by www-data, means a new empty
+# volume mounted at storage/app/ads starts with the right owner.
+RUN mkdir -p storage/app/ads/originals storage/app/ads/licences
+
 # Static marketing site, served from the web root next to the Laravel app.
 COPY --chown=www-data:www-data *.html style.css robots.txt sitemap.xml Seema_Cabs_Goa_Logo.png Seema_Cabs_Goa_Logo_black.png public/
 COPY --chown=www-data:www-data Faviocn public/Faviocn
