@@ -62,3 +62,8 @@ Route::get('/', function () {
 
 require __DIR__ . '/admin.php';
 require __DIR__ . '/customer.php';
+
+// Unknown paths: a normal 404 — or, while the service is suspended, the
+// "temporarily unavailable" page (PlatformSuspensionGate), which is also what
+// the renamed static marketing pages fall through to.
+Route::fallback(fn () => abort(404));

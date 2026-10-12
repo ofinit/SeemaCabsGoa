@@ -32,7 +32,7 @@
                 ['Collected (incl. GST)', AdCampaign::rupees($m->gross ?? 0), null],
                 ['GST', AdCampaign::rupees($m->gst ?? 0), null],
                 ['Seema Holidays share', AdCampaign::rupees($seema), 'net of OfinIT share'],
-                ['OfinIT share + GST', AdCampaign::rupees($m->ofinit_total ?? 0), 'split at the gateway'],
+                ['OfinIT share (incl. GST)', AdCampaign::rupees($m->ofinit_total ?? 0), \App\Services\Platform\PlatformSettings::splitsEnabled() ? 'split at the gateway' : 'billed monthly'],
                 ['Refunded', AdCampaign::rupees($m->refunds ?? 0), null],
                 ['Offers & coupons given', AdCampaign::rupees($m->promos ?? 0), null],
                 ['Live ads now', $live, null],

@@ -242,7 +242,7 @@
                         <tr><td colspan="2">Net (taxable)</td><td class="text-end">{{ AdCampaign::rupees($campaign->net_amount) }}</td></tr>
                         <tr><td colspan="2">{{ $campaign->inter_state ? 'IGST' : 'CGST + SGST' }} {{ (float) $campaign->gst_rate }}%</td><td class="text-end">{{ AdCampaign::rupees($campaign->gstAmount()) }}</td></tr>
                         <tr class="fw-bold"><td colspan="2">Total</td><td class="text-end">{{ AdCampaign::rupees($campaign->total_amount) }}</td></tr>
-                        <tr><td colspan="2">OfinIT share ({{ 100 - (float) $campaign->seema_percent }}%) + GST</td><td class="text-end">{{ AdCampaign::rupees($campaign->ofinit_total) }}</td></tr>
+                        <tr><td colspan="2">OfinIT share ({{ 100 - (float) $campaign->seema_percent }}% of amount paid, incl. GST)</td><td class="text-end">{{ AdCampaign::rupees($campaign->ofinit_total) }}</td></tr>
                         <tr><td colspan="2">Seema Holidays keeps</td><td class="text-end">{{ AdCampaign::rupees($campaign->total_amount - $campaign->ofinit_total) }}</td></tr>
                     </table>
                     <p class="mb-1">Payment: {{ $campaign->isPaid() ? ucfirst($campaign->payment_gateway) . ' ' . $campaign->transaction_id . ' · ' . $campaign->paid_at->format('d-m-Y H:i') : 'not paid' }}</p>

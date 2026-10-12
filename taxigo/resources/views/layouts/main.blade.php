@@ -29,6 +29,7 @@
                 @include('layouts.breadcrumb')
                 @endif
                 <!-- [ Main Content ] start -->
+                @auth @include('platform.banner') @endauth
                 @yield('content')
                 <!-- [ Main Content ] end -->
             </div>

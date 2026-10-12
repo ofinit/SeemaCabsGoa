@@ -48,7 +48,7 @@ class AdSettings
 
     public const LABELS = [
         self::ENABLED => 'Self-serve ads open to advertisers (1 = yes, 0 = no)',
-        self::SEEMA_PERCENT => "Seema Holidays' commission (% of net ad price)",
+        self::SEEMA_PERCENT => "Seema Holidays' share (%) — OfinIT gets the rest of the amount paid, GST included",
         self::GST_RATE => 'GST rate on ads (%)',
         self::SAC_SEEMA => 'SAC — internet advertising space, Seema → advertiser (CA to confirm)',
         self::SAC_OFINIT => 'SAC — ad platform & operations, OfinIT → Seema (CA to confirm)',

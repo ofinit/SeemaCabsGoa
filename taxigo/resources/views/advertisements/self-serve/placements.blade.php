@@ -54,7 +54,7 @@
             <form method="POST" action="{{ route('admin.advertisements.selfServe.settings.save') }}" class="card">
                 @csrf
                 <div class="card-header"><h5 class="mb-0">Ad settings</h5>
-                    <p class="small text-muted mb-0">Seema Holidays keeps its commission % of the net price; OfinIT receives the rest + GST by split. Changes are audited.</p></div>
+                    <p class="small text-muted mb-0">OfinIT's share is (100 − Seema %) of the amount the advertiser pays, GST included — e.g. 90% of ₹1,180 = ₹1,062. Collected by gateway split or billed monthly (Billing → Settlement method). Changes are audited.</p></div>
                 <div class="card-body">
                     @foreach ($labels as $key => $label)
                         <div class="mb-2">

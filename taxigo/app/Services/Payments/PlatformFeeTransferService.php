@@ -40,6 +40,10 @@ class PlatformFeeTransferService
         if (!empty($payment->transfer_reference)) {
             return ['ok' => true, 'message' => 'Already transferred (' . $payment->transfer_reference . ').'];
         }
+        // Monthly-invoice settlement: OfinIT's fee is billed on the 1st instead of split here.
+        if (!\App\Services\Platform\PlatformSettings::splitsEnabled()) {
+            return ['ok' => false, 'message' => 'Settlement is by monthly invoice — no split.'];
+        }
 
         $amount = self::amountFor($payment);
         if ($amount <= 0) {

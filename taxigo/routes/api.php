@@ -61,6 +61,8 @@ Route::post('/razorpay/webhook', [RazorpayWebhookController::class, 'handle']);
 // Cashfree webhook — called directly by Cashfree servers. Authenticity
 // is verified via the x-webhook-signature and x-webhook-timestamp headers.
 Route::post('/cashfree/webhook', [\App\Http\Controllers\Api\CashfreeWebhookController::class, 'handle']);
+// OfinIT's own Razorpay account: payment links for OfinIT → Seema Holidays invoices.
+Route::post('/ofinit/razorpay/webhook', [\App\Http\Controllers\Api\OfinitRazorpayWebhookController::class, 'handle']);
 
 Route::group(['middleware' => 'auth:sanctum'], function () {
     // User Details

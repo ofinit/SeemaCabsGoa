@@ -110,7 +110,8 @@ class PaymentController extends ResponseController
         $ofinitShare = $paymentRow ? \App\Services\Payments\PlatformFeeTransferService::amountFor($paymentRow) : 0;
         $fleetOperator = \App\Models\FleetOperator::orderBy('id', 'ASC')->first();
 
-        if ($fleetOperator && !empty($fleetOperator->cashfree_vendor_id) && $ofinitShare > 0) {
+        // Monthly-invoice settlement: no split; OfinIT bills Seema on the 1st.
+        if (\App\Services\Platform\PlatformSettings::splitsEnabled() && $fleetOperator && !empty($fleetOperator->cashfree_vendor_id) && $ofinitShare > 0) {
             // Cashfree vendor split amount cannot exceed total order amount
             $splitAmount = min(round($ofinitShare, 2), round($amount, 2));
             if ($splitAmount > 0) {

@@ -19,6 +19,10 @@ class Kernel extends ConsoleKernel
         $schedule->command('invoices:platform-fee')->monthlyOn(1, '06:00')->timezone('Asia/Kolkata');
         $schedule->command('ads:maintain')->hourly()->withoutOverlapping();
         $schedule->command('ads:weekly-reports')->weeklyOn(1, '10:00')->timezone('Asia/Kolkata');
+        // OfinIT billing: payment-link checks, reminders, suspension after the 5th; keep the static pages in step.
+        $schedule->command('platform:billing')->hourlyAt(5)->withoutOverlapping();
+        $schedule->command('platform:billing --at-midnight')->dailyAt('00:01')->timezone('Asia/Kolkata');
+        $schedule->command('platform:sync-pages')->everyMinute();
     }
 
     /**

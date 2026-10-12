@@ -36,12 +36,14 @@ class Kernel extends HttpKernel
             \Illuminate\View\Middleware\ShareErrorsFromSession::class,
             \App\Http\Middleware\VerifyCsrfToken::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
+            \App\Http\Middleware\PlatformSuspensionGate::class,
         ],
 
         'api' => [
             // \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
             \Illuminate\Routing\Middleware\ThrottleRequests::class . ':api',
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
+            \App\Http\Middleware\PlatformSuspensionGate::class,
         ],
     ];
 
@@ -57,6 +59,7 @@ class Kernel extends HttpKernel
         'customer.auth' => \App\Http\Middleware\Customer\Authenticate::class,
         'customer.guest' => \App\Http\Middleware\Customer\RedirectIfAuthenticated::class,
         'TwoFa' => \App\Http\Middleware\TwoFaSecurity::class,
+        'admin.only' => \App\Http\Middleware\AdminOnlyRoutes::class,
         'auth.basic' => \Illuminate\Auth\Middleware\AuthenticateWithBasicAuth::class,
         'auth.session' => \Illuminate\Session\Middleware\AuthenticateSession::class,
         'cache.headers' => \Illuminate\Http\Middleware\SetCacheHeaders::class,

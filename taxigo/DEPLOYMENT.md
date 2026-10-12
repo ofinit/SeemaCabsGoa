@@ -207,6 +207,29 @@ Firebase credentials file) and `ads:weekly-reports` on Mondays at 10:00 IST
 
 Without it, use **Admin → Invoices → Prepare draft** each month instead.
 
+## 10a. OfinIT platform billing (settlement & suspension)
+
+Admin (OfinIT) → **Billing**:
+
+1. **Settlement method**: *Monthly invoice* (default — the gateways no longer
+   split payments) or *Gateway split*. In monthly mode no splits / transfers
+   are attempted for rides or ads.
+2. **OfinIT's Razorpay account**: key id, key secret and webhook secret
+   (stored encrypted; used only on the server to create a payment link per
+   invoice). In OfinIT's Razorpay dashboard → Webhooks add
+   `https://www.seemacabsgoa.com/api/ofinit/razorpay/webhook`, event
+   `payment_link.paid`, same secret.
+3. Seema's billing emails go to the **supplier business profile email** and
+   every **fleet operator login** email.
+
+On the 1st the scheduler issues last month's OfinIT invoices, creates the
+payment links and emails Seema; reminders on the 3rd and 5th; anything unpaid
+on the **6th** suspends the website, PWA and customer app (rides under way,
+SOS and the fleet operator's Billing page keep working). Payment through the
+link restores the service within minutes; bank payments are recorded by
+OfinIT on the Billing page. The scheduler (`schedule:run` every minute) is
+required.
+
 ## 11. Pricing, GST & invoicing (first-time setup)
 
 Release `pricing v2` adds database tables and columns. **Run the migrations

@@ -107,7 +107,7 @@ class AdPaymentService
 
         $orderId = self::CASHFREE_PREFIX . $campaign->id . '_' . time();
         $vendorId = trim((string) FleetOperator::orderBy('id')->value('cashfree_vendor_id'));
-        $splits = ($vendorId !== '' && $campaign->ofinit_total > 0)
+        $splits = (\App\Services\Platform\PlatformSettings::splitsEnabled() && $vendorId !== '' && $campaign->ofinit_total > 0)
             ? [['vendor_id' => $vendorId, 'amount' => round(min($campaign->ofinit_total, $campaign->total_amount) / 100, 2)]]
             : null;
         $advertiser = $campaign->advertiser;
@@ -302,6 +302,10 @@ class AdPaymentService
         }
         if ($campaign->transfer_reference) {
             return ['ok' => true, 'message' => 'Already transferred (' . $campaign->transfer_reference . ').'];
+        }
+        // Monthly-invoice settlement: OfinIT's share is billed on the 1st instead of split here.
+        if (!\App\Services\Platform\PlatformSettings::splitsEnabled()) {
+            return ['ok' => false, 'message' => 'Settlement is by monthly invoice — no split.'];
         }
         $amount = (int) min($campaign->ofinit_total, $campaign->total_amount);
         if ($amount <= 0) {

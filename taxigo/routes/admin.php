@@ -58,7 +58,7 @@ Route::get('password/{id}', [AuthController::class, 'password'])->name('admin.pa
 Route::post('password-update', [AuthController::class, 'passwordUpdate'])->name('admin.password.update');
 
 
-Route::group(['prefix' => 'admin', 'middleware' => ['auth', 'TwoFa'], 'as' => 'admin.'], function () {
+Route::group(['prefix' => 'admin', 'middleware' => ['auth', 'TwoFa', 'admin.only'], 'as' => 'admin.'], function () {
 
     // Dashboard
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
@@ -248,6 +248,19 @@ Route::group(['prefix' => 'admin', 'middleware' => ['auth', 'TwoFa'], 'as' => 'a
         Route::post('/no-show/{id}/undo', [TripManagementController::class, 'undoNoShow'])->name('undoNoShow');
         Route::post('/booking-detail', [TripManagementController::class, 'bookingDetail'])->name('bookingDetail');
         Route::post('/update-call-status', [TripManagementController::class, 'updateCallStatus'])->name('updateCallStatus');
+    });
+
+    // OfinIT → Seema Holidays billing. Billing page: OfinIT and Seema; settings and actions: OfinIT only.
+    Route::get('/billing', [\App\Http\Controllers\Admin\PlatformBillingController::class, 'index'])->name('billing.index');
+    Route::get('/billing/invoices/{invoice}', [\App\Http\Controllers\Admin\PlatformBillingController::class, 'invoice'])->name('billing.invoice');
+    Route::prefix('platform-billing')->name('platformBilling.')->controller(\App\Http\Controllers\Admin\PlatformBillingController::class)->group(function () {
+        Route::post('/settings', 'saveSettings')->name('settings');
+        Route::post('/run', 'run')->name('run');
+        Route::post('/suspend', 'suspend')->name('suspend');
+        Route::post('/restore', 'restore')->name('restore');
+        Route::post('/invoices/{invoice}/paid', 'recordPayment')->name('recordPayment');
+        Route::post('/invoices/{invoice}/link', 'createLink')->name('createLink');
+        Route::post('/invoices/{invoice}/check', 'checkLink')->name('checkLink');
     });
 
     // Advertisement

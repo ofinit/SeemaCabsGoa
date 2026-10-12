@@ -50,6 +50,7 @@ class Invoice extends Model
         'meta' => 'array',
         'is_b2b' => 'boolean',
         'issue_date' => 'date',
+        'due_date' => 'date',
         'period_start' => 'date',
         'period_end' => 'date',
         'issued_at' => 'datetime',

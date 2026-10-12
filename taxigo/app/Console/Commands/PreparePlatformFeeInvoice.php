@@ -23,6 +23,17 @@ class PreparePlatformFeeInvoice extends Command
             ? Carbon::createFromFormat('Y-m', $this->argument('month'), 'Asia/Kolkata')->startOfMonth()
             : now('Asia/Kolkata')->subMonthNoOverflow()->startOfMonth();
 
+        // Monthly-invoice settlement: issue, work out what's due, create the payment links, email Seema.
+        if (\App\Services\Platform\PlatformSettings::mode() === \App\Services\Platform\PlatformSettings::INVOICE) {
+            $result = app(\App\Services\Platform\PlatformBilling::class)->monthlyRun($month);
+            $this->info('Issued: ' . (implode(', ', $result['issued']) ?: 'nothing new') . "; payment links: {$result['links']}.");
+            foreach ($result['problems'] as $problem) {
+                $this->warn($problem);
+            }
+
+            return self::SUCCESS;
+        }
+
         // Ad platform & operations (self-serve ads) — a separate monthly invoice.
         try {
             $ads = $invoices->adPlatformDraft($month);

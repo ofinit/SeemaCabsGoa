@@ -71,6 +71,7 @@
         <li class="pc-item"><a class="pc-link" href="{{asset('/accounting/tds-invoices')}}">TDS Invoices</a></li>
     </ul>
 </li> --}}
+<li class="pc-item {{ request()->routeIs('admin.billing.*') ? 'active' : '' }}"><a class="pc-link" href="{{ route('admin.billing.index') }}"><span class="pc-micon"><i class="ph-duotone ph-credit-card"></i></span><span class="pc-mtext">Billing</span></a></li>
 @if (Auth()->user()->type == App\Enums\Type::ADMIN)
     <li class="pc-item {{ request()->routeIs('admin.invoices.*') ? 'active' : '' }}"><a class="pc-link" href="{{ route('admin.invoices.index') }}"><span class="pc-micon"><i class="ph-duotone ph-receipt"></i></span><span class="pc-mtext">Invoices</span></a></li>
 @endif
