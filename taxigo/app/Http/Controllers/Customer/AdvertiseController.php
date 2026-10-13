@@ -33,7 +33,7 @@ use RuntimeException;
 
 /**
  * Self-serve advertising in the customer PWA (plan §7): business profile,
- * the create-an-ad wizard, checkout on Seema Holidays' gateway, and "My ads"
+ * the create-an-ad wizard, checkout on OfinIT's payment page, and "My ads"
  * with results, invoices and renewal.
  */
 class AdvertiseController extends Controller

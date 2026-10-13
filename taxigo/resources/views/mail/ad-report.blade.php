@@ -35,7 +35,7 @@
                     <a href="{{ route('customer.ads.show', $campaign) }}" style="display:inline-block;background:#FEDC33;color:#1a1e23;text-decoration:none;font-weight:bold;padding:12px 20px;border-radius:999px;">{{ $kind === 'final' ? 'See results & renew' : 'See full results' }}</a>
                 </p>
                 <p style="margin:0;font-size:12px;color:#6b7280;line-height:1.5;">
-                    A view counts when at least half the ad is on screen for one second. Seema Holidays · Seema Cabs Goa
+                    A view counts when at least half the ad is on screen for one second. OfinIT Solutions Pvt. Ltd. · Seema Cabs Goa
                 </p>
             </td>
         </tr>
