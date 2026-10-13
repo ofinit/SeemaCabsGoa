@@ -190,9 +190,7 @@ class CashfreeWebhookController extends Controller
             if ($payment->booking_id) {
                 $booking = BookingDetail::find($payment->booking_id);
                 if ($booking) {
-                    $booking->status = Type::REFUND;
-                    $booking->refund = $refundAmount ?: $booking->refund;
-                    $booking->save();
+                    $booking->recordRefund((float) ($refundAmount ?: $booking->refund));
 
                     try {
                         app(InvoiceService::class)->refundVoucher($booking, (float) $booking->refund);

@@ -108,9 +108,7 @@ class RazorpayWebhookController extends Controller
 
         $alreadyRecorded = $bookingDetail->refund !== null && (float) $bookingDetail->refund >= $amountRefunded;
 
-        $bookingDetail->refund = $amountRefunded;
-        $bookingDetail->status = Type::REFUND;
-        $bookingDetail->save();
+        $bookingDetail->recordRefund((float) $amountRefunded);
 
         $payment->status = Type::REFUND;
         $payment->save();

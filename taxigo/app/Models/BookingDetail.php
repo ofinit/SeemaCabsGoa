@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use App\Models\BaseModel;
+use App\Enums\BookingEnum;
 use Carbon\Carbon;
 
 class BookingDetail extends BaseModel
@@ -65,6 +66,20 @@ class BookingDetail extends BaseModel
     ];
 
     /** Bookings priced with GST applied (only possible from pricing v2). */
+    /**
+     * Record a refund of the online advance. A ride that hasn't been completed
+     * becomes cancelled; a completed ride stays completed (partial refund).
+     * Never store Type::REFUND (4) in status — for bookings 4 means COMPLETE.
+     */
+    public function recordRefund(float $amount): void
+    {
+        $this->refund = $amount;
+        if ((int) $this->status !== BookingEnum::COMPLETE) {
+            $this->status = BookingEnum::CANCEL;
+        }
+        $this->save();
+    }
+
     public function hasGst(): bool
     {
         return (int) $this->pricing_version >= 2 && (float) $this->gst_rate > 0;

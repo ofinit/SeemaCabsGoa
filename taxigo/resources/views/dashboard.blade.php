@@ -31,7 +31,7 @@
     .fin-t4{background:linear-gradient(135deg,#e2711d,#b0500f)}
     .ov-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:16px;margin-bottom:32px}
     @media (max-width:1200px){.ov-grid{grid-template-columns:repeat(3,1fr)}}
-    @media (max-width:600px){.ov-grid{grid-template-columns:repeat(2,1fr)}}
+    @media (max-width:600px){.ov-grid{grid-template-columns:repeat(2,1fr)!important}}
     .ov-card{background:#fff;border-radius:14px;padding:16px 18px;box-shadow:0 2px 8px rgba(0,0,0,.06);display:flex;align-items:center;gap:12px}
     .ov-icon{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
     .ov-value{font-size:20px;font-weight:700;line-height:1.15;margin:0}
@@ -39,7 +39,7 @@
 </style>
 
 @if($isVendor)
-    <p class="text-muted mb-3">Showing figures for your own fleet only.</p>
+    <p class="text-muted mb-3">Showing your fleet's rides.</p>
 @endif
 
 @if($platform)
@@ -63,81 +63,100 @@
         </div>
         <div class="ov-card">
             <div class="ov-icon" style="background:#eef1f4;color:#37424e">📋</div>
-            <div><p class="ov-value">{{ number_format($platform['total_bookings']) }}</p><p class="ov-label">Total Bookings</p></div>
+            <div><p class="ov-value">{{ number_format($platform['total_bookings']) }}</p><p class="ov-label">Bookings (all)</p></div>
         </div>
         <div class="ov-card">
             <div class="ov-icon" style="background:#fde8e8;color:#a01f1f">💰</div>
-            <div><p class="ov-value">{{ $fmt($summary['seema_cabs_commission']) }}</p><p class="ov-label">Platform Profit</p></div>
+            <div><p class="ov-value">{{ $fmt($summary['ofinit_fee']) }}</p><p class="ov-label">OfinIT Platform Fee</p></div>
         </div>
     </div>
 @endif
 
-<p class="fin-section-title">Financial Summary</p>
+<p class="fin-section-title">Financial Summary &middot; {{ number_format($summary['completed_rides']) }} completed rides</p>
 <div class="fin-grid">
     <div class="fin-card fin-c1">
         <p class="fin-label">Total Gross Amount</p>
         <p class="fin-value">{{ $fmt($summary['gross_amount']) }}</p>
-        <p class="fin-sub">Total amount charged to customers</p>
+        <p class="fin-sub">Paid by customers for completed rides{{ $summary['refunded_on_completed'] > 0 ? ' (after ' . $fmt($summary['refunded_on_completed']) . ' refunded)' : '' }}</p>
     </div>
     <div class="fin-card fin-c2">
         <p class="fin-label">Base Fare (Cab Rates)</p>
         <p class="fin-value">{{ $fmt($summary['base_fare']) }}</p>
-        <p class="fin-sub">All trip types, before tax &amp; surge</p>
+        <p class="fin-sub">Before markup, surge &amp; GST</p>
     </div>
     <div class="fin-card fin-c3">
         <p class="fin-label">Surge Pricing</p>
         <p class="fin-value">{{ $fmt($summary['surge_pricing']) }}</p>
-        <p class="fin-sub">{{ $summary['surge_pricing'] > 0 ? 'Surge charges collected' : 'No surge bookings recorded yet' }}</p>
+        <p class="fin-sub">{{ $summary['surge_pricing'] > 0 ? 'Surge charges collected' : 'No surge on completed rides yet' }}</p>
     </div>
     <div class="fin-card fin-c4">
         <p class="fin-label">Fare Markup</p>
-        <p class="fin-value">{{ $fmt($summary['other_charges']) }}</p>
-        <p class="fin-sub">Internal markup in fares &middot; GST {{ $fmt($summary['gst_collected'] ?? 0) }}</p>
+        <p class="fin-value">{{ $fmt($summary['fare_markup']) }}</p>
+        <p class="fin-sub">Internal markup in fares &middot; GST collected {{ $fmt($summary['gst_collected']) }}</p>
     </div>
 
     <div class="fin-card fin-c5">
         <p class="fin-label">Collected Online (PG)</p>
         <p class="fin-value">{{ $fmt($summary['collected_online']) }}</p>
-        <p class="fin-sub">Amount paid online via payment gateway</p>
+        <p class="fin-sub">Advances paid through the payment gateway</p>
     </div>
     <div class="fin-card fin-c6">
-        <p class="fin-label">Seema Cabs Commission</p>
-        <p class="fin-value">{{ $fmt($summary['seema_cabs_commission']) }}</p>
-        <p class="fin-sub">Aggregator's share of PG collection</p>
+        <p class="fin-label">OfinIT Platform Fee</p>
+        <p class="fin-value">{{ $fmt($summary['ofinit_fee']) }}</p>
+        <p class="fin-sub">{{ $summary['ofinit_fee_gst'] > 0 ? '+ GST ' . $fmt($summary['ofinit_fee_gst']) . ' · ' : '' }}OfinIT's fee on completed rides</p>
     </div>
     <div class="fin-card fin-c7">
-        <p class="fin-label">Platform Commission</p>
-        <p class="fin-value">{{ $fmt($summary['platform_commission']) }}</p>
-        <p class="fin-sub">Platform's share of PG collection</p>
+        <p class="fin-label">Seema Holidays Earnings</p>
+        <p class="fin-value">{{ $fmt($summary['seema_earnings']) }}</p>
+        <p class="fin-sub">Gross − GST − OfinIT fee (before driver costs)</p>
     </div>
     <div class="fin-card fin-c8">
         <p class="fin-label">Cash to Drivers</p>
         <p class="fin-value">{{ $fmt($summary['cash_to_drivers']) }}</p>
-        <p class="fin-sub">Balance paid directly in cash by customer</p>
+        <p class="fin-sub">Balance paid in cash to the driver</p>
     </div>
 </div>
 
-<p class="fin-section-title">Revenue by Trip Type</p>
+<p class="fin-section-title">Other Paid Bookings</p>
+<div class="ov-grid" style="grid-template-columns:repeat(3,1fr)">
+    <div class="ov-card">
+        <div class="ov-icon" style="background:#e8f0fe;color:#2148c9">🗓️</div>
+        <div><p class="ov-value">{{ number_format($summary['upcoming']['count']) }} · {{ $fmt($summary['upcoming']['value']) }}</p>
+            <p class="ov-label">Upcoming rides · advance {{ $fmt($summary['upcoming']['advance']) }}</p></div>
+    </div>
+    <div class="ov-card">
+        <div class="ov-icon" style="background:#fdf0e3;color:#b0500f">✖️</div>
+        <div><p class="ov-value">{{ number_format($summary['cancelled']['kept_count']) }} · {{ $fmt($summary['cancelled']['kept']) }}</p>
+            <p class="ov-label">Cancelled · advance kept</p></div>
+    </div>
+    <div class="ov-card">
+        <div class="ov-icon" style="background:#fde8e8;color:#a01f1f">↩️</div>
+        <div><p class="ov-value">{{ number_format($summary['cancelled']['refunded_count']) }} · {{ $fmt($summary['cancelled']['refunded']) }}</p>
+            <p class="ov-label">Cancelled · refunded</p></div>
+    </div>
+</div>
+
+<p class="fin-section-title">Revenue by Trip Type &middot; completed rides</p>
 <div class="fin-grid">
     <div class="fin-card fin-t1">
         <p class="fin-label">Airport Pickup <span class="fin-icon">✈️</span></p>
         <p class="fin-value">{{ $fmt($summary['by_trip_type']['airport_pickup']['amount']) }}</p>
-        <p class="fin-sub">{{ $summary['by_trip_type']['airport_pickup']['count'] }} bookings</p>
+        <p class="fin-sub">{{ $summary['by_trip_type']['airport_pickup']['count'] }} rides</p>
     </div>
     <div class="fin-card fin-t2">
         <p class="fin-label">Airport Drop <span class="fin-icon">🛬</span></p>
         <p class="fin-value">{{ $fmt($summary['by_trip_type']['airport_drop']['amount']) }}</p>
-        <p class="fin-sub">{{ $summary['by_trip_type']['airport_drop']['count'] }} bookings</p>
+        <p class="fin-sub">{{ $summary['by_trip_type']['airport_drop']['count'] }} rides</p>
     </div>
     <div class="fin-card fin-t3">
         <p class="fin-label">In-City Rides <span class="fin-icon">🗺️</span></p>
         <p class="fin-value">{{ $fmt($summary['by_trip_type']['in_city']['amount']) }}</p>
-        <p class="fin-sub">{{ $summary['by_trip_type']['in_city']['count'] }} bookings</p>
+        <p class="fin-sub">{{ $summary['by_trip_type']['in_city']['count'] }} rides</p>
     </div>
     <div class="fin-card fin-t4">
         <p class="fin-label">Sightseeing / Other <span class="fin-icon">📖</span></p>
         <p class="fin-value">{{ $fmt($summary['by_trip_type']['sightseeing']['amount']) }}</p>
-        <p class="fin-sub">{{ $summary['by_trip_type']['sightseeing']['count'] }} bookings</p>
+        <p class="fin-sub">{{ $summary['by_trip_type']['sightseeing']['count'] }} rides</p>
     </div>
 </div>
 @endsection

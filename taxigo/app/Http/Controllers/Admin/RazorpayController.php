@@ -101,9 +101,7 @@ class RazorpayController extends Controller
             }
 
             $bookingDetails = BookingDetail::find($request->id);
-            $bookingDetails->status = Type::REFUND;
-            $bookingDetails->refund = $amount ?? 0;
-            $bookingDetails->save();
+            $bookingDetails->recordRefund((float) ($amount ?? 0));
 
             $bookingPaymentDetails = Payment::where('booking_id', $request->id)->first();
             $bookingPaymentDetails->status = Type::REFUND;
@@ -168,9 +166,7 @@ class RazorpayController extends Controller
             }
 
             $bookingDetails = BookingDetail::find($id);
-            $bookingDetails->status = Type::REFUND;
-            $bookingDetails->refund = $amount ?? 0;
-            $bookingDetails->save();
+            $bookingDetails->recordRefund((float) ($amount ?? 0));
 
             $bookingPaymentDetails = Payment::where('booking_id', $id)->first();
             $bookingPaymentDetails->status = Type::REFUND;
