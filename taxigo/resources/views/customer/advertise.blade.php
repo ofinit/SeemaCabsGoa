@@ -34,7 +34,9 @@
                                 default => 'status-badge--cancelled',
                             };
                         @endphp
-                        <a href="{{ $campaign->isEditable() && !$campaign->isPaid() ? route('customer.ads.edit', $campaign) : route('customer.ads.show', $campaign) }}" class="card p-4 flex items-center justify-between gap-3">
+                        @php $deletable = !$campaign->isPaid() && in_array($campaign->status, [\App\Models\AdCampaign::DRAFT, \App\Models\AdCampaign::PENDING_PAYMENT], true); @endphp
+                        <div class="card p-0 flex items-stretch" x-data="{ busy: false }">
+                        <a href="{{ $campaign->isEditable() && !$campaign->isPaid() ? route('customer.ads.edit', $campaign) : route('customer.ads.show', $campaign) }}" class="p-4 flex flex-1 min-w-0 items-center justify-between gap-3">
                             <div class="min-w-0">
                                 @if($agency && $agency->isApproved())<p class="text-[11px] uppercase tracking-wider text-muted">{{ $campaign->advertiser->business_name ?? '' }}</p>@endif
                                 <p class="font-semibold text-ink text-sm">{{ $campaign->reference }}
@@ -48,6 +50,16 @@
                             </div>
                             <span class="status-badge {{ $tone }} shrink-0">{{ $label }}</span>
                         </a>
+                        @if($deletable)
+                            <button type="button" class="px-4 text-muted hover:text-danger border-l border-black/[0.05] shrink-0" title="Delete draft" aria-label="Delete draft {{ $campaign->reference }}" :disabled="busy"
+                                @click="if (!confirm('Delete draft {{ $campaign->reference }}? Nothing has been charged.')) return; busy = true;
+                                    apiFetch(@js(route('customer.actions.ads.campaigns.discard', $campaign)), { method: 'POST', body: {} })
+                                        .then(() => $el.closest('.card').remove())
+                                        .catch(e => { busy = false; alert(e.message); })">
+                                <svg x-show="!busy" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 002 2h8a2 2 0 002-2l1-12M9 7V4h6v3"/></svg><span x-show="busy" style="display:none">…</span>
+                            </button>
+                        @endif
+                        </div>
                     @endforeach
                 </div>
             </div>

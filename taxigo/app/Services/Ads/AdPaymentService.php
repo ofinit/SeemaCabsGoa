@@ -127,6 +127,25 @@ class AdPaymentService
         return ['payment_url' => $link->short_url];
     }
 
+    /** Close every unpaid OfinIT payment link of an ad that is being deleted. */
+    public function cancelOpenLinks(AdCampaign $campaign): void
+    {
+        foreach (self::orders($campaign) as $order) {
+            if ($order['gateway'] !== 'ofinit') {
+                continue;
+            }
+            try {
+                $link = $this->ofinitApi()->paymentLink->fetch($order['id']);
+                if (in_array($link->status, ['created', 'partially_paid'], true)) {
+                    $link->cancel();
+                }
+            } catch (\Throwable $e) {
+                Log::info("Could not cancel payment link {$order['id']} ({$campaign->reference}): " . $e->getMessage());
+            }
+        }
+        $campaign->forceFill(['payment_url' => null])->save();
+    }
+
     /** Is the OfinIT payment link paid in full? Returns the captured payment id. */
     private function verifyOfinit(AdCampaign $campaign, ?string $linkId): array
     {

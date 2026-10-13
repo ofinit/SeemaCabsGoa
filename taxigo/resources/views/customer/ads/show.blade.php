@@ -52,6 +52,9 @@
                 @case(AdCampaign::DRAFT)
                 @case(AdCampaign::PENDING_PAYMENT)
                     <a href="{{ route('customer.ads.edit', $campaign) }}" class="btn-primary w-full">Complete payment</a>
+                    @if(!$campaign->isPaid())
+                        <button type="button" class="w-full text-sm text-muted underline mt-2" @click="discard()" :disabled="busy">Delete this draft</button>
+                    @endif
                     @break
             @endswitch
         </div>
@@ -174,6 +177,14 @@ function adCampaign() {
                 const res = await apiFetch(@js(route('customer.actions.ads.campaigns.conversion', $campaign)), { method: 'POST', body: {} });
                 window.location.href = res.data.redirect;
                 window.location.reload();
+            } catch (e) { this.error = e.message; this.busy = false; }
+        },
+        async discard() {
+            if (!confirm('Delete this draft? Nothing has been charged.')) return;
+            this.busy = true; this.error = '';
+            try {
+                const res = await apiFetch(@js(route('customer.actions.ads.campaigns.discard', $campaign)), { method: 'POST', body: {} });
+                window.location.href = res.data.redirect;
             } catch (e) { this.error = e.message; this.busy = false; }
         },
         async renew() {

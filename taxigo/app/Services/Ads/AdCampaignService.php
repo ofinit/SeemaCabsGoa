@@ -615,6 +615,14 @@ class AdCampaignService
         if ($campaign->isPaid() || !in_array($campaign->status, [AdCampaign::DRAFT, AdCampaign::PENDING_PAYMENT], true)) {
             throw new RuntimeException('Paid ads can only be cancelled by our team. Please contact us.');
         }
+        // A payment page may still be open: credit a payment that went through, close the rest.
+        if (AdPaymentService::orders($campaign)) {
+            if ($paid = $this->payments->reconcile($campaign)) {
+                $this->paymentReceived($campaign, $paid['gateway'], $paid['transaction_id']);
+                throw new RuntimeException('This ad has just been paid, so it was not deleted. It is now with our team for review.');
+            }
+            $this->payments->cancelOpenLinks($campaign);
+        }
         $campaign->forceFill(['status' => AdCampaign::CANCELLED, 'hold_expires_at' => null])->save();
     }
 

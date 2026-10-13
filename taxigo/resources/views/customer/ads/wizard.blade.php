@@ -361,7 +361,7 @@
             <button type="button" class="btn-primary w-full" @click="pay()" :disabled="busy" x-show="!waiting">
                 <span x-text="busy ? 'Please wait…' : 'Pay ' + (quote ? money(quote.total_amount) : '')"></span>
             </button>
-            <button type="button" class="w-full text-sm text-muted underline" @click="discard()" x-show="campaign && !campaign.paid">Cancel this ad</button>
+            <button type="button" class="w-full text-sm text-muted underline" @click="discard()" x-show="campaign && !campaign.paid">Delete this draft</button>
         </section>
     </div>
 
@@ -673,7 +673,7 @@ function adWizard() {
             } catch (e) { this.error = e.message; this.busy = false; }
         },
         async discard() {
-            if (!confirm('Cancel this ad? Nothing has been charged.')) return;
+            if (!confirm('Delete this draft? Nothing has been charged.')) return;
             try {
                 const res = await apiFetch(routes.base + '/' + this.campaign.id + '/discard', { method: 'POST', body: {} });
                 window.location.href = res.data.redirect;
