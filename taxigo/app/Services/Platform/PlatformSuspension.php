@@ -11,8 +11,8 @@ use Illuminate\Support\Facades\Log;
  * What still works while the service is suspended for unpaid OfinIT invoices:
  * OfinIT's admin login, Seema's fleet operator login (Billing page only), SOS,
  * rides already under way (their trip screens), payment webhooks. Everything
- * else — marketing pages, the PWA, the customer app — shows "temporarily
- * unavailable". Future bookings are not served.
+ * else — marketing pages (MarketingPageController), the PWA, the customer
+ * app — shows "temporarily unavailable". Future bookings are not served.
  */
 class PlatformSuspension
 {
@@ -64,36 +64,5 @@ class PlatformSuspension
         }
 
         return array_values(array_unique($numbers ?: ['112']));
-    }
-
-    /**
-     * The marketing pages are static files served by the web server without
-     * reaching Laravel. While suspended they are renamed (*.html.suspended)
-     * so requests fall through to Laravel, which shows the notice; restoring
-     * renames them back. Re-applied every minute (a deploy brings the files back).
-     */
-    public static function syncStaticPages(): int
-    {
-        $suspended = PlatformSettings::suspended();
-        $changed = 0;
-        $dir = public_path();
-        $files = $suspended ? glob($dir . '/*.html') : glob($dir . '/*.html.suspended');
-        foreach ($files ?: [] as $file) {
-            $name = basename($file);
-            if (in_array($name, ['404.html', '502.html', '404.html.suspended', '502.html.suspended'], true)) {
-                continue;
-            }
-            $target = $suspended ? $file . '.suspended' : substr($file, 0, -strlen('.suspended'));
-            if ($suspended && file_exists($target)) {
-                @unlink($target);
-            }
-            if (@rename($file, $target)) {
-                $changed++;
-            } else {
-                Log::warning("Could not rename {$name} for platform suspension.");
-            }
-        }
-
-        return $changed;
     }
 }

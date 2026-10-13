@@ -23,7 +23,6 @@ class Kernel extends ConsoleKernel
         $schedule->command('platform:billing')->hourlyAt(5)->withoutOverlapping();
         $schedule->command('platform:billing --links')->everyMinute()->withoutOverlapping();
         $schedule->command('platform:billing --at-midnight')->dailyAt('00:01')->timezone('Asia/Kolkata');
-        $schedule->command('platform:sync-pages')->everyMinute();
     }
 
     /**

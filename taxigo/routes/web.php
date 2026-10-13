@@ -5,6 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\InvoiceDocumentController;
 use App\Http\Controllers\AdTrackingController;
+use App\Http\Controllers\MarketingPageController;
 use Illuminate\Support\Facades\Auth;
 
 /*
@@ -49,21 +50,29 @@ Route::post('ads/report', [AdTrackingController::class, 'report'])->middleware('
 Route::get('q/{code}', [AdTrackingController::class, 'qr'])->where('code', '[A-Za-z0-9]{6,12}')->middleware('throttle:60,1')->name('ads.qr');
 Route::get('ads/conv/{token}.gif', [AdTrackingController::class, 'conversion'])->where('token', '[A-Za-z0-9]{20,32}')->middleware('throttle:120,1')->name('ads.conversion');
 
-// The Docker image copies the static marketing site into public/, so the root
-// URL serves its homepage. Without it (e.g. local dev) fall back to the legacy
-// authenticated dashboard view.
+// Static marketing pages, served through Laravel (not from public/) so the
+// suspension gate covers them instantly. No session: no cookies, cacheable.
+$noSession = [
+    \App\Http\Middleware\EncryptCookies::class,
+    \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
+    \Illuminate\Session\Middleware\StartSession::class,
+    \Illuminate\View\Middleware\ShareErrorsFromSession::class,
+    \App\Http\Middleware\VerifyCsrfToken::class,
+];
 Route::get('/', function () {
-    if (file_exists($home = public_path('index.html'))) {
-        return response()->file($home);
+    if (MarketingPageController::available()) {
+        return app(MarketingPageController::class)->show();
     }
 
-    return auth()->check() ? view('index') : redirect()->route('admin.login');
-});
+    // No marketing site (bare app checkout): the legacy dashboard / admin login.
+    return redirect()->route('admin.login');
+})->withoutMiddleware($noSession);
+Route::get('{page}.html', [MarketingPageController::class, 'show'])->where('page', '[a-z0-9][a-z0-9-]*')
+    ->withoutMiddleware($noSession)->name('marketing.page');
 
 require __DIR__ . '/admin.php';
 require __DIR__ . '/customer.php';
 
 // Unknown paths: a normal 404 — or, while the service is suspended, the
-// "temporarily unavailable" page (PlatformSuspensionGate), which is also what
-// the renamed static marketing pages fall through to.
+// "temporarily unavailable" page (PlatformSuspensionGate).
 Route::fallback(fn () => abort(404));

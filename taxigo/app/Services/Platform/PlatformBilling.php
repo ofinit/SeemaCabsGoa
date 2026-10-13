@@ -293,7 +293,6 @@ class PlatformBilling
         PlatformSettings::set(PlatformSettings::SUSPENDED, '1');
         PlatformSettings::set(PlatformSettings::SUSPENDED_AT, now()->toDateTimeString(), false);
         PlatformSettings::set(PlatformSettings::SUSPENDED_REASON, mb_substr($reason, 0, 250), false);
-        PlatformSuspension::syncStaticPages();
         Log::warning("Platform suspended: {$reason}");
         $this->mailSeema('suspended', self::overdue());
     }
@@ -305,7 +304,6 @@ class PlatformBilling
         }
         PlatformSettings::set(PlatformSettings::SUSPENDED, '0');
         PlatformSettings::set(PlatformSettings::SUSPENDED_REASON, mb_substr($reason, 0, 250), false);
-        PlatformSuspension::syncStaticPages();
         Log::info("Platform restored: {$reason}");
         $this->mailSeema('restored', collect());
     }

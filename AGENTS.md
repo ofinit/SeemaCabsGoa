@@ -52,7 +52,7 @@ Welcome! This document provides a compact architectural map of the Seema Cabs Go
 ## 4. Frontend Architecture
 
 The frontend is divided into two parts:
-1. **Public Marketing Pages**: Handled by static, lightweight HTML pages directly under the root project directory (such as `index.html`, `airport-taxi-goa.html`). These static files load CSS stylesheets directly and link users to the Google Play Store and Apple App Store for mobile application installation.
+1. **Public Marketing Pages**: Handled by static, lightweight HTML pages directly under the root project directory (such as `index.html`, `airport-taxi-goa.html`). These static files load CSS stylesheets directly and link users to the Google Play Store and Apple App Store for mobile application installation. In the Docker image the pages live in `taxigo/resources/marketing/` and are served by `MarketingPageController` (no session, 5-minute cache), so `PlatformSuspensionGate` covers them; never copy them into `public/`.
 2. **Customer PWA & Dashboard UI Pages**: Customer PWA (`resources/views/customer`) and Admin views built using Laravel Blade templates. Vite compiles the admin and customer stylesheets (`resources/scss/style.scss`, `resources/css/customer.css`) using [vite.config.js](file:///D:/Projects/India/Goa/SeemaCabsGoa.com/taxigo/vite.config.js). The production output bundles compile inside `public/build/`. Styling leverages TailwindCSS (PWA) and Bootstrap 5.2 (Admin).
 
 ---

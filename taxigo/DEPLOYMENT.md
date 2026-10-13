@@ -4,7 +4,7 @@ One Docker image serves everything on a single domain:
 
 | URL | Served by |
 |---|---|
-| `/`, `/airport-taxi-goa.html`, `/contact.html`, … | Static marketing site (repo root) |
+| `/`, `/airport-taxi-goa.html`, `/contact.html`, … | Static marketing site (repo root), served by Laravel (`MarketingPageController`) |
 | `/app/...` | Customer PWA (Laravel): `https://www.seemacabsgoa.com/app` |
 | `/login`, `/dashboard`, … | Admin panel (Laravel, 2FA protected) |
 | `/api/...` | REST API for the mobile apps (Laravel) |
@@ -13,7 +13,9 @@ One Docker image serves everything on a single domain:
 The image is built from [`taxigo/Dockerfile`](Dockerfile) on top of
 `serversideup/php:8.2-fpm-nginx` (nginx + PHP-FPM, listens on port **8080**).
 The Docker build context is the **repository root**, because the marketing pages
-live there and get copied into Laravel's `public/` directory during the build.
+live there. The build copies the pages into `resources/marketing/` (served by
+Laravel, so a platform suspension covers them instantly) and their CSS and
+images into `public/`.
 
 ---
 

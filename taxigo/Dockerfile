@@ -31,8 +31,11 @@ RUN composer dump-autoload --optimize --no-dev
 # volume mounted at storage/app/ads starts with the right owner.
 RUN mkdir -p storage/app/ads/originals storage/app/ads/licences
 
-# Static marketing site, served from the web root next to the Laravel app.
-COPY --chown=www-data:www-data *.html style.css robots.txt sitemap.xml Seema_Cabs_Goa_Logo.png Seema_Cabs_Goa_Logo_black.png public/
+# Static marketing site. The pages go to resources/marketing (not the web
+# root) and are served by Laravel, so suspension for unpaid invoices covers
+# them instantly; their CSS, images and the error pages stay public.
+COPY --chown=www-data:www-data *.html resources/marketing/
+COPY --chown=www-data:www-data 404.html 502.html style.css robots.txt sitemap.xml Seema_Cabs_Goa_Logo.png Seema_Cabs_Goa_Logo_black.png public/
 COPY --chown=www-data:www-data Faviocn public/Faviocn
 COPY --chown=www-data:www-data __files public/__files
 COPY --chown=www-data:www-data mail public/mail
