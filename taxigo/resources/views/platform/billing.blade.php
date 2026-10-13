@@ -110,6 +110,35 @@
             </div>
         </div>
 
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Ad revenue share — Seema Holidays → OfinIT</h5>
+                    <p class="small text-muted mb-0">OfinIT sells the ad space and pays Seema Holidays its share ({{ (float) \App\Services\Ads\AdSettings::get(\App\Services\Ads\AdSettings::SEEMA_PERCENT) }}% + GST) by Razorpay Route on every ad payment. Seema's tax invoice for those payouts is made automatically on the 1st for the previous month — nothing to pay here.</p>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead><tr><th>Document</th><th>Period</th><th class="text-end">Taxable</th><th class="text-end">Total</th><th>Status</th></tr></thead>
+                            <tbody>
+                                @forelse ($revenueShare as $doc)
+                                    <tr>
+                                        <td><a href="{{ route('admin.billing.invoice', $doc) }}" target="_blank">{{ $doc->number ?? 'Draft #' . $doc->id }}</a> <span class="small text-muted">{{ $doc->label() }}</span></td>
+                                        <td class="small">{{ optional($doc->period_start)->format('M Y') }}</td>
+                                        <td class="text-end">₹{{ number_format((float) $doc->taxable_value, 2) }}</td>
+                                        <td class="text-end">₹{{ number_format((float) $doc->total, 2) }}</td>
+                                        <td class="small">{{ $doc->isIssued() ? 'settled by Route' : 'draft — complete Seema\'s business profile' }}</td>
+                                    </tr>
+                                @empty
+                                    <tr><td colspan="5" class="text-muted small p-3">No ad revenue share invoices yet.</td></tr>
+                                @endforelse
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         @if ($isAdmin)
             <div class="col-lg-6">
                 <form method="POST" action="{{ route('admin.platformBilling.settings') }}" class="card">
@@ -118,7 +147,7 @@
                     <div class="card-body">
                         <div class="mb-3">
                             <label class="form-check"><input class="form-check-input" type="radio" name="mode" value="invoice" @checked($mode === 'invoice')>
-                                <span class="form-check-label"><strong>Monthly invoice</strong> — Seema collects every payment; OfinIT invoices on the 1st (ride platform fee + GST; ad share, 90% incl. GST), due on the 5th, suspension on the 6th if unpaid.</span></label>
+                                <span class="form-check-label"><strong>Monthly invoice</strong> — Seema collects every payment; OfinIT invoices on the 1st (ride platform fee + GST), due on the 5th, suspension on the 6th if unpaid.</span></label>
                             <label class="form-check mt-2"><input class="form-check-input" type="radio" name="mode" value="split" @checked($mode === 'split')>
                                 <span class="form-check-label"><strong>Gateway split / Route</strong> — OfinIT's share is split out at Razorpay / Cashfree on every payment (needs the split feature enabled on Seema's gateway accounts).</span></label>
                         </div>
@@ -133,7 +162,10 @@
                         <div class="mb-2"><label class="form-label small mb-0">Key id</label><input class="form-control form-control-sm" name="razorpay_key" value="{{ $razorpayKey }}" placeholder="rzp_live_…"></div>
                         <div class="mb-2"><label class="form-label small mb-0">Key secret {!! $razorpayReady ? '<span class="text-success">· saved</span>' : '' !!}</label><input class="form-control form-control-sm" type="password" name="razorpay_secret" autocomplete="new-password" placeholder="{{ $razorpayReady ? 'Leave empty to keep' : '' }}"></div>
                         <div class="mb-2"><label class="form-label small mb-0">Webhook secret {!! $webhookReady ? '<span class="text-success">· saved</span>' : '' !!}</label><input class="form-control form-control-sm" type="password" name="webhook_secret" autocomplete="new-password" placeholder="{{ $webhookReady ? 'Leave empty to keep' : '' }}"></div>
-                        <p class="small text-muted mb-0">In OfinIT's Razorpay dashboard → Webhooks, add <code>{{ url('/api/ofinit/razorpay/webhook') }}</code> with the event <strong>payment_link.paid</strong> and the same secret.</p>
+                        <p class="small text-muted">In OfinIT's Razorpay dashboard → Webhooks, add <code>{{ url('/api/ofinit/razorpay/webhook') }}</code> with the event <strong>payment_link.paid</strong> and the same secret. The same keys take advertisers' payments for ads.</p>
+                        <div class="mb-0"><label class="form-label small mb-0">Seema Holidays' Route linked account (ad revenue share)</label>
+                            <input class="form-control form-control-sm" name="seema_route_account" value="{{ old('seema_route_account', $seemaRouteAccount) }}" placeholder="acc_…" pattern="acc_[A-Za-z0-9]+">
+                            <span class="small text-muted">OfinIT's Razorpay → Route → Linked accounts (Seema's own account after its KYC). Until it is set, payouts wait and go out automatically once saved.</span></div>
                     </div>
                     <div class="card-footer"><button class="btn btn-primary">Save</button></div>
                 </form>

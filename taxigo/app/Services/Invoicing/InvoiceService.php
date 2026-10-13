@@ -352,14 +352,18 @@ class InvoiceService
     // Advertising
     // ------------------------------------------------------------------
 
-    /** Seema Holidays → advertiser tax invoice for a paid ad (idempotent). */
+    /**
+     * Tax invoice to the advertiser for a paid ad (idempotent). The seller is
+     * OfinIT for ads paid through OfinIT's payment link, Seema Holidays for
+     * ads paid on Seema's own gateway (older campaigns).
+     */
     public function adInvoice(AdCampaign $campaign): ?Invoice
     {
-        if (!$campaign->isPaid() || $this->existingAd($campaign, Invoice::AD_INVOICE)) {
+        if (!$campaign->isPaid() || $campaign->complimentary || $this->existingAd($campaign, Invoice::AD_INVOICE)) {
             return null;
         }
         $campaign->loadMissing('items.placement', 'advertiser');
-        $supplier = BusinessProfile::supplier();
+        $supplier = $this->adSeller($campaign);
         $recipient = $this->advertiserRecipient($campaign);
         $sac = trim((string) AdSettings::get(AdSettings::SAC_SEEMA)) ?: null;
         $rate = (float) $campaign->gst_rate;
@@ -380,6 +384,7 @@ class InvoiceService
                     'period' => $campaign->start_date->format('d-m-Y') . ' to ' . $campaign->end_date->format('d-m-Y'),
                     'transaction_id' => $campaign->transaction_id,
                     'payment_gateway' => $campaign->payment_gateway,
+                    'issuer' => $campaign->collectedByOfinit() ? 'platform' : 'supplier',
                 ],
                 'created_by' => auth()->id(),
             ], $this->adTaxColumns((int) $campaign->net_amount, $rate, (bool) $campaign->inter_state)));
@@ -436,7 +441,8 @@ class InvoiceService
                 'is_b2b' => $original->is_b2b,
                 'place_of_supply' => $original->place_of_supply,
                 'sac_code' => $original->sac_code,
-                'meta' => ['description' => 'Credit note against ' . ($original->number ?? 'draft ad invoice'), 'reason' => $reason, 'campaign' => $campaign->reference],
+                'meta' => ['description' => 'Credit note against ' . ($original->number ?? 'draft ad invoice'), 'reason' => $reason, 'campaign' => $campaign->reference,
+                    'issuer' => $original->meta['issuer'] ?? 'supplier'],
                 'created_by' => auth()->id(),
             ], $this->adTaxColumns($taxable, $rate, (bool) $campaign->inter_state)));
             $note->lines()->create([
@@ -451,7 +457,7 @@ class InvoiceService
         });
 
         try {
-            return $this->issue($note, BusinessProfile::supplier());
+            return $this->issue($note, $this->adSeller($campaign));
         } catch (RuntimeException $e) {
             Log::warning("Ad credit note {$note->id} ({$campaign->reference}) saved as draft: " . $e->getMessage());
 
@@ -489,6 +495,8 @@ class InvoiceService
         $from = Carbon::parse($start->format('Y-m-d') . ' 00:00:00', 'Asia/Kolkata')->timezone(config('app.timezone'));
         $to = Carbon::parse($end->format('Y-m-d') . ' 23:59:59', 'Asia/Kolkata')->timezone(config('app.timezone'));
         $campaigns = AdCampaign::whereNotNull('paid_at')
+            ->where(fn ($q) => $q->whereNull('payment_gateway')->orWhere('payment_gateway', '!=', 'ofinit'))
+            ->where('complimentary', false)
             ->whereBetween('paid_at', [$from, $to])
             ->whereNotIn('id', $billed->keys())
             ->orderBy('paid_at')->get()
@@ -562,6 +570,155 @@ class InvoiceService
 
             return ['invoice' => $invoice, 'credit_note' => $creditNote, 'campaigns' => $campaigns->count()];
         });
+    }
+
+    /**
+     * Seema Holidays → OfinIT "ad revenue share" tax invoice for a month:
+     * one line per OfinIT-sold ad whose Route payout reached Seema that
+     * month (Seema's share, net of refunds made before invoicing), plus a
+     * credit note for shares billed earlier and reversed since. Issued
+     * automatically in Seema's number series.
+     *
+     * @return array{invoice: ?Invoice, credit_note: ?Invoice, campaigns: int}
+     */
+    public function adRevenueShare(Carbon $month): array
+    {
+        $start = $month->copy()->startOfMonth();
+        $end = $month->copy()->endOfMonth();
+        $rate = (float) AdSettings::get(AdSettings::GST_RATE);
+        $sac = trim((string) AdSettings::get(AdSettings::SAC_SEEMA)) ?: null;
+
+        if (Invoice::where('type', Invoice::AD_REVENUE_SHARE)->where('status', Invoice::ISSUED)->whereDate('period_start', $start)->exists()) {
+            return ['invoice' => null, 'credit_note' => null, 'campaigns' => 0];
+        }
+
+        $billed = DB::table('invoice_lines')->join('invoices', 'invoices.id', '=', 'invoice_lines.invoice_id')
+            ->where('invoices.type', Invoice::AD_REVENUE_SHARE)->where('invoices.status', Invoice::ISSUED)
+            ->whereNotNull('invoice_lines.ad_campaign_id')
+            ->select('invoice_lines.*', 'invoices.number', 'invoices.id as original_invoice_id')->get()->keyBy('ad_campaign_id');
+
+        $from = Carbon::parse($start->format('Y-m-d') . ' 00:00:00', 'Asia/Kolkata')->timezone(config('app.timezone'));
+        $to = Carbon::parse($end->format('Y-m-d') . ' 23:59:59', 'Asia/Kolkata')->timezone(config('app.timezone'));
+        $campaigns = AdCampaign::where('payment_gateway', 'ofinit')->where('transfer_status', 'done')
+            ->whereBetween('transferred_at', [$from, $to])->whereNotIn('id', $billed->keys())
+            ->orderBy('transferred_at')->get()
+            ->map(fn (AdCampaign $c) => [$c, $this->seemaShareAfterRefunds($c)])
+            ->filter(fn ($row) => $row[1] > 0)->values();
+
+        $seema = BusinessProfile::supplier();
+        $ofinit = BusinessProfile::platform();
+
+        [$invoice, $creditNote] = DB::transaction(function () use ($start, $end, $rate, $sac, $campaigns, $billed, $seema, $ofinit) {
+            // Drafts left by an earlier run (incomplete profile) are rebuilt.
+            Invoice::whereIn('type', [Invoice::AD_REVENUE_SHARE, Invoice::CREDIT_NOTE])->where('status', Invoice::DRAFT)
+                ->whereDate('period_start', $start)->whereRaw("JSON_EXTRACT(meta, '$.revenue_share') = true")
+                ->get()->each(function (Invoice $draft) {
+                    $draft->lines()->delete();
+                    $draft->delete();
+                });
+
+            $make =fn (string $type, string $description, array $meta = []) => Invoice::create([
+                'type' => $type,
+                'status' => Invoice::DRAFT,
+                'supplier' => $seema?->snapshot() ?? [],
+                'recipient' => $this->ofinitRecipient($ofinit),
+                'is_b2b' => true,
+                'place_of_supply' => $ofinit?->state_code ?: '30',
+                'period_start' => $start->toDateString(),
+                'period_end' => $end->toDateString(),
+                'sac_code' => $sac,
+                'meta' => array_merge(['description' => $description, 'revenue_share' => true], $meta),
+                'created_by' => auth()->id(),
+            ]);
+
+            $invoice = null;
+            if ($campaigns->isNotEmpty()) {
+                $invoice = $make(Invoice::AD_REVENUE_SHARE, 'Ad revenue share for ' . $start->format('F Y') . ' (paid by Razorpay Route)');
+                $taxable = 0;
+                foreach ($campaigns as [$campaign, $share]) {
+                    $taxable += $share;
+                    $invoice->lines()->create([
+                        'ad_campaign_id' => $campaign->id,
+                        'description' => 'Revenue share — ' . $campaign->reference . ' (paid ' . $campaign->paid_at->timezone('Asia/Kolkata')->format('d-m-Y')
+                            . ', Route ' . $campaign->transfer_reference . ')',
+                        'sac_code' => $sac,
+                        'rate_percent' => (float) $campaign->seema_percent,
+                        'base_amount' => $campaign->net_amount / 100,
+                        'taxable_value' => $share / 100,
+                    ]);
+                }
+                $this->applyTotals($invoice, $taxable, $rate);
+            }
+
+            // Shares billed earlier and reversed since (refunds).
+            $credited = DB::table('invoice_lines')->join('invoices', 'invoices.id', '=', 'invoice_lines.invoice_id')
+                ->where('invoices.type', Invoice::CREDIT_NOTE)->whereRaw("JSON_EXTRACT(invoices.meta, '$.revenue_share') = true")
+                ->whereNotNull('invoice_lines.ad_campaign_id')->groupBy('invoice_lines.ad_campaign_id')
+                ->selectRaw('invoice_lines.ad_campaign_id, SUM(invoice_lines.taxable_value) as credited')->pluck('credited', 'ad_campaign_id');
+            $reversals = AdCampaign::whereIn('id', $billed->keys())->where('refund_amount', '>', 0)->get()
+                ->map(function (AdCampaign $c) use ($billed, $credited) {
+                    $billedShare = $this->paise($billed[$c->id]->taxable_value);
+                    $due = $billedShare - $this->seemaShareAfterRefunds($c) - $this->paise($credited[$c->id] ?? 0);
+
+                    return [$c, max(0, min($due, $billedShare)), $billed[$c->id]];
+                })->filter(fn ($row) => $row[1] > 0)->values();
+
+            $creditNote = null;
+            if ($reversals->isNotEmpty()) {
+                $creditNote = $make(Invoice::CREDIT_NOTE, 'Credit note — ad revenue share reversed on refunded ads');
+                $taxable = 0;
+                foreach ($reversals as [$campaign, $amount, $line]) {
+                    $taxable += $amount;
+                    $creditNote->related_invoice_id = $creditNote->related_invoice_id ?? $line->original_invoice_id;
+                    $creditNote->lines()->create([
+                        'ad_campaign_id' => $campaign->id,
+                        'description' => 'Reversal — ' . $campaign->reference . ' (billed in ' . $line->number . ', refunded)',
+                        'sac_code' => $sac,
+                        'taxable_value' => $amount / 100,
+                    ]);
+                }
+                $this->applyTotals($creditNote, $taxable, $rate);
+            }
+
+            return [$invoice, $creditNote];
+        });
+
+        // Fully automatic: issued in Seema's series straight away (drafts stay if Seema's profile is incomplete).
+        foreach (array_filter([$invoice, $creditNote]) as $doc) {
+            try {
+                $this->issue($doc, $seema);
+            } catch (RuntimeException $e) {
+                Log::warning("Ad revenue share document {$doc->id} saved as draft: " . $e->getMessage());
+            }
+        }
+
+        return ['invoice' => $invoice?->fresh(), 'credit_note' => $creditNote?->fresh(), 'campaigns' => $campaigns->count()];
+    }
+
+    /** Seema's share (before GST, paise) still standing after refunds, pro rata. */
+    private function seemaShareAfterRefunds(AdCampaign $campaign): int
+    {
+        $kept = max(0, (int) $campaign->total_amount - (int) $campaign->refund_amount);
+
+        return (int) round($campaign->seemaShare() * $kept / max(1, (int) $campaign->total_amount));
+    }
+
+    /** Who sells the ad: OfinIT for ads paid through OfinIT's link, else Seema. */
+    private function adSeller(AdCampaign $campaign): ?BusinessProfile
+    {
+        return $campaign->collectedByOfinit() ? BusinessProfile::platform() : BusinessProfile::supplier();
+    }
+
+    private function ofinitRecipient(?BusinessProfile $ofinit): array
+    {
+        return [
+            'name' => $ofinit?->legal_name ?? 'OfinIT Solutions Pvt. Ltd.',
+            'gstin' => $ofinit?->gstin,
+            'state_code' => $ofinit?->state_code,
+            'address' => $ofinit?->addressLines() ?? [],
+            'email' => $ofinit?->email,
+            'phone' => $ofinit?->phone,
+        ];
     }
 
     /** OfinIT's share (before GST, paise) after any refunds, pro rata. */
@@ -751,7 +908,8 @@ class InvoiceService
     private function profileFor(Invoice $invoice): ?BusinessProfile
     {
         $isPlatform = in_array($invoice->type, [Invoice::PLATFORM_FEE, Invoice::AD_PLATFORM_FEE], true)
-            || ($invoice->type === Invoice::CREDIT_NOTE && ($invoice->meta['platform'] ?? false));
+            || ($invoice->type === Invoice::CREDIT_NOTE && ($invoice->meta['platform'] ?? false))
+            || (($invoice->meta['issuer'] ?? null) === 'platform');
 
         return $isPlatform ? BusinessProfile::platform() : BusinessProfile::supplier();
     }

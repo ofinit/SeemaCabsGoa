@@ -21,6 +21,9 @@ use App\Models\Advertisement;
 use App\Models\SettingChange;
 use App\Services\Ads\AdAvailability;
 use App\Services\Ads\AdCampaignService;
+use App\Services\Ads\AdCreativeProcessor;
+use App\Services\Ads\AdTargeting;
+use App\Models\SightSeeingPackages;
 use App\Services\Ads\AdPaymentService;
 use App\Services\Ads\AdPushService;
 use App\Services\Ads\AdReporting;
@@ -110,6 +113,58 @@ class AdCampaignController extends Controller
             'tab' => $tab,
             'counts' => $counts,
         ]);
+    }
+
+    /** Run an ad without payment (house ads, partners, goodwill). */
+    public function createComplimentary()
+    {
+        $this->authorizeAdmin();
+
+        return view('advertisements.self-serve.complimentary', [
+            'categories' => AdCategory::where('active', true)->orderBy('sort')->get(['id', 'name']),
+            'placements' => AdPlacement::active()->get(),
+            'packages' => SightSeeingPackages::orderBy('title')->get(['id', 'title']),
+            'pageGroups' => collect(AdTargeting::PAGE_GROUPS)->map(fn ($g) => $g['label']),
+        ]);
+    }
+
+    public function storeComplimentary(Request $request, AdCreativeProcessor $processor)
+    {
+        $this->authorizeAdmin();
+        $data = $request->validate([
+            'business_name' => 'required|string|max:120',
+            'category_id' => 'required|integer|exists:ad_categories,id',
+            'placements' => 'required|array|min:1',
+            'placements.*' => 'integer',
+            'start_date' => 'required|date_format:Y-m-d',
+            'days' => 'required|integer|min:1|max:366',
+            'landing_type' => 'required|in:website,whatsapp,call',
+            'landing_value' => 'required|string|max:500',
+            'headline' => 'nullable|string|max:40',
+            'push_body' => 'nullable|string|max:120',
+            'targeting' => 'nullable|array',
+            'note' => 'nullable|string|max:500',
+            'image' => 'nullable|file|mimes:jpg,jpeg,png,webp|max:10240',
+            'images' => 'nullable|array',
+            'images.*' => 'file|mimes:jpg,jpeg,png,webp|max:10240',
+        ]);
+        $images = array_filter((array) $request->file('images', [])) + array_filter(['default' => $request->file('image')]);
+        if (!$images) {
+            return back()->withInput()->with('error', 'Add an image.');
+        }
+
+        try {
+            $campaign = $this->ads->createComplimentary($data, $images, (int) Auth::id(), $processor);
+        } catch (RuntimeException $e) {
+            return back()->withInput()->with('error', $e->getMessage());
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Complimentary ad failed: ' . $e->getMessage());
+
+            return back()->withInput()->with('error', 'The ad could not be created. Check the images (JPEG/PNG) and try again.');
+        }
+
+        return redirect()->route('admin.advertisements.selfServe.show', $campaign)
+            ->with('success', "Complimentary ad {$campaign->reference} created — " . ($campaign->start_date->isFuture() ? 'it goes live on ' . $campaign->start_date->format('d M Y') . '.' : 'it is live now.'));
     }
 
     public function show(AdCampaign $campaign)

@@ -50,13 +50,17 @@ class PlatformBillingController extends Controller
             'razorpayReady' => PlatformSettings::razorpayConfigured(),
             'webhookReady' => (bool) PlatformSettings::secret(PlatformSettings::RZP_WEBHOOK_SECRET),
             'seemaEmails' => PlatformBilling::seemaEmails(),
+            'revenueShare' => PlatformBilling::revenueShareDocuments()->limit(60)->get(),
+            'seemaRouteAccount' => PlatformSettings::get(PlatformSettings::SEEMA_ROUTE_ACCOUNT, ''),
         ]);
     }
 
     /** An OfinIT → Seema document, viewable by both logins. */
     public function invoice(Invoice $invoice)
     {
-        abort_unless(PlatformBilling::documents()->whereKey($invoice->id)->where('status', Invoice::ISSUED)->exists() || $this->isAdmin(), 404);
+        $visible = PlatformBilling::documents()->whereKey($invoice->id)->where('status', Invoice::ISSUED)->exists()
+            || PlatformBilling::revenueShareDocuments()->whereKey($invoice->id)->exists();
+        abort_unless($visible || $this->isAdmin(), 404);
         $invoice->load('lines', 'related');
 
         return view('invoices.document', compact('invoice'));
@@ -71,6 +75,7 @@ class PlatformBillingController extends Controller
             'razorpay_key' => ['nullable', 'string', 'max:60', 'regex:/^rzp_(live|test)_[A-Za-z0-9]+$/'],
             'razorpay_secret' => 'nullable|string|max:100',
             'webhook_secret' => 'nullable|string|max:100',
+            'seema_route_account' => ['nullable', 'string', 'max:40', 'regex:/^acc_[A-Za-z0-9]+$/'],
         ]);
         $emails = array_values(array_filter(array_map('trim', preg_split('/[,;\s]+/', (string) ($data['billing_emails'] ?? '')))));
         foreach ($emails as $email) {
@@ -85,6 +90,7 @@ class PlatformBillingController extends Controller
         }
         PlatformSettings::setSecret(PlatformSettings::RZP_SECRET, $data['razorpay_secret'] ?? null);
         PlatformSettings::setSecret(PlatformSettings::RZP_WEBHOOK_SECRET, $data['webhook_secret'] ?? null);
+        PlatformSettings::set(PlatformSettings::SEEMA_ROUTE_ACCOUNT, (string) ($data['seema_route_account'] ?? ''));
 
         return back()->with('success', 'Platform billing settings saved.');
     }
@@ -94,7 +100,12 @@ class PlatformBillingController extends Controller
     {
         $this->authorizeAdmin();
         $request->validate(['month' => 'required|date_format:Y-m']);
-        $result = $this->billing->monthlyRun(Carbon::createFromFormat('Y-m', $request->input('month'), 'Asia/Kolkata')->startOfMonth());
+        $month = Carbon::createFromFormat('Y-m', $request->input('month'), 'Asia/Kolkata')->startOfMonth();
+        $share = app(\App\Services\Invoicing\InvoiceService::class)->adRevenueShare($month);
+        $result = $this->billing->monthlyRun($month);
+        foreach (array_filter([$share['invoice'], $share['credit_note']]) as $doc) {
+            $doc->isIssued() ? $result['issued'][] = $doc->number : $result['problems'][] = "Ad revenue share document #{$doc->id} is a draft — complete Seema's business profile.";
+        }
 
         $message = ($result['issued'] ? 'Issued ' . implode(', ', $result['issued']) . '. ' : 'Nothing new to issue. ')
             . ($result['links'] ? "{$result['links']} payment link(s) created." : '');

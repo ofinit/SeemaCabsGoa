@@ -13,7 +13,16 @@ use Razorpay\Api\Api;
 use RuntimeException;
 
 /**
- * Ad payments on Seema Holidays' own gateway (plan §12), with the same
+ * Ad payments. OfinIT sells the ad space: advertisers pay through a Razorpay
+ * payment link on OfinIT's own account (gateway `ofinit`), and Seema
+ * Holidays' share (its % of the price + GST on it) is sent straight to its
+ * Route linked account. Confirmation always comes from Razorpay, never the
+ * browser. Refunds reverse Seema's transfer in the same proportion.
+ *
+ * Older paths below (Seema's own Razorpay / Cashfree with an OfinIT split)
+ * are kept for campaigns that were paid that way.
+ *
+ * Previously: ad payments on Seema Holidays' own gateway (plan §12), with the same
  * safeguards as rides: the amount comes from the stored campaign, payment is
  * confirmed with the gateway (never the browser), and OfinIT's share + GST is
  * split out — Razorpay Route transfer to OfinIT's linked account, or a
@@ -56,6 +65,108 @@ class AdPaymentService
         $last = collect(self::orders($campaign))->last();
 
         return $last && $last['gateway'] === $gateway && (int) $last['amount'] === (int) $campaign->total_amount && empty($last['refunded']) ? $last : null;
+    }
+
+    /**
+     * A Razorpay payment link on OfinIT's account for this ad. An open link
+     * for the same amount is reused; a link for an old amount is cancelled
+     * first (unless it was already paid, which is credited instead).
+     *
+     * @return array{payment_url: string}|array{paid: array{gateway: string, transaction_id: string}}
+     */
+    public function createOfinitLink(AdCampaign $campaign): array
+    {
+        $open = $this->openOrder($campaign, 'ofinit');
+        if ($open && $campaign->payment_url) {
+            $link = $this->ofinitApi()->paymentLink->fetch($open['id']);
+            if (in_array($link->status, ['created', 'partially_paid'], true)) {
+                return ['payment_url' => $campaign->payment_url];
+            }
+        }
+        // Earlier links: credit a paid one, cancel the rest.
+        foreach (self::orders($campaign) as $order) {
+            if ($order['gateway'] !== 'ofinit' || !empty($order['refunded'])) {
+                continue;
+            }
+            $verified = $this->verifyOfinit($campaign, $order['id']);
+            if ($verified['ok']) {
+                return ['paid' => ['gateway' => 'ofinit', 'transaction_id' => $verified['transaction_id']]];
+            }
+            try {
+                $this->ofinitApi()->paymentLink->fetch($order['id'])->cancel();
+            } catch (\Throwable $e) {
+                // Already expired or cancelled.
+            }
+        }
+
+        $advertiser = $campaign->advertiser;
+        $phone = preg_replace('/\D/', '', (string) $advertiser->phone);
+        $link = $this->ofinitApi()->paymentLink->create(array_filter([
+            'amount' => (int) $campaign->total_amount,
+            'currency' => 'INR',
+            'accept_partial' => false,
+            'reference_id' => mb_substr($campaign->reference . '-' . (count(self::orders($campaign)) + 1), 0, 40),
+            'description' => mb_substr('Advertising ' . $campaign->reference . ' on Seema Cabs Goa — ' . $advertiser->business_name, 0, 2048),
+            'customer' => array_filter([
+                'name' => $advertiser->contact_name,
+                'email' => $advertiser->email,
+                'contact' => $phone ? '+91' . substr($phone, -10) : null,
+            ]),
+            'notify' => ['sms' => false, 'email' => false],
+            'reminder_enable' => false,
+            // Closes with the slot hold (Razorpay needs at least 15 minutes); late payments are refunded anyway.
+            'expire_by' => max(now()->addMinutes(16)->timestamp, optional($campaign->hold_expires_at)->addMinutes(5)?->timestamp ?? 0),
+            'notes' => ['ad_campaign' => $campaign->reference, 'campaign_id' => (string) $campaign->id, 'purpose' => 'Advertising'],
+            'callback_url' => route('customer.ads.show', $campaign),
+            'callback_method' => 'get',
+        ], fn ($v) => $v !== null && $v !== []));
+
+        $this->remember($campaign, 'ofinit', $link->id, (int) $campaign->total_amount);
+        $campaign->forceFill(['payment_url' => $link->short_url])->save();
+
+        return ['payment_url' => $link->short_url];
+    }
+
+    /** Is the OfinIT payment link paid in full? Returns the captured payment id. */
+    private function verifyOfinit(AdCampaign $campaign, ?string $linkId): array
+    {
+        $ids = array_column(array_filter(self::orders($campaign), fn ($o) => $o['gateway'] === 'ofinit'), 'id');
+        if (!$linkId || !in_array($linkId, $ids, true)) {
+            return ['ok' => false, 'message' => 'This payment does not belong to this ad.'];
+        }
+        $link = $this->ofinitApi()->paymentLink->fetch($linkId);
+        if ($link->status !== 'paid') {
+            return ['ok' => false, 'message' => 'Payment is not completed yet.'];
+        }
+        $paymentId = null;
+        foreach ((array) ($link->payments ?? []) as $payment) {
+            $payment = (array) $payment;
+            if (($payment['status'] ?? '') === 'captured') {
+                $paymentId = $payment['payment_id'] ?? null;
+            }
+        }
+        if (!$paymentId || (int) ($link->amount_paid ?? 0) + self::TOLERANCE_PAISE < (int) $campaign->total_amount) {
+            return ['ok' => false, 'message' => 'Paid amount does not match the ad amount.'];
+        }
+        if ($this->referenceInUse($campaign, $paymentId)) {
+            return ['ok' => false, 'message' => 'This payment is already linked to something else.'];
+        }
+        if ($campaign->pg_order_id !== $linkId) {
+            $campaign->forceFill(['pg_order_id' => $linkId, 'payment_gateway' => 'ofinit'])->save();
+        }
+
+        return ['ok' => true, 'message' => 'Verified', 'transaction_id' => $paymentId];
+    }
+
+    /** The campaign an OfinIT payment link belongs to (from its notes / our records). */
+    public static function campaignForLink(string $linkId, ?string $campaignId = null): ?AdCampaign
+    {
+        $campaign = $campaignId ? AdCampaign::find((int) $campaignId) : null;
+        if ($campaign && in_array($linkId, array_column(self::orders($campaign), 'id'), true)) {
+            return $campaign;
+        }
+
+        return AdCampaign::where('pg_order_id', $linkId)->first();
     }
 
     public function createRazorpayOrder(AdCampaign $campaign): array
@@ -141,9 +252,11 @@ class AdPaymentService
     public function verify(AdCampaign $campaign, string $gateway, ?string $reference): array
     {
         try {
-            return $gateway === 'cashfree'
-                ? $this->verifyCashfree($campaign, $reference ?: $campaign->pg_order_id)
-                : $this->verifyRazorpay($campaign, $reference);
+            return match ($gateway) {
+                'ofinit' => $this->verifyOfinit($campaign, $reference ?: $campaign->pg_order_id),
+                'cashfree' => $this->verifyCashfree($campaign, $reference ?: $campaign->pg_order_id),
+                default => $this->verifyRazorpay($campaign, $reference),
+            };
         } catch (\Throwable $e) {
             Log::error("Ad payment verification error for {$campaign->reference}: " . $e->getMessage());
 
@@ -213,6 +326,13 @@ class AdPaymentService
         }
         foreach (array_reverse(self::orders($campaign)) as $order) {
             try {
+                if ($order['gateway'] === 'ofinit') {
+                    $result = $this->verifyOfinit($campaign, $order['id']);
+                    if ($result['ok']) {
+                        return ['gateway' => 'ofinit', 'transaction_id' => $result['transaction_id']];
+                    }
+                    continue;
+                }
                 if ($order['gateway'] === 'cashfree') {
                     $result = $this->verifyCashfree($campaign, $order['id']);
                     if ($result['ok']) {
@@ -303,6 +423,9 @@ class AdPaymentService
         if ($campaign->transfer_reference) {
             return ['ok' => true, 'message' => 'Already transferred (' . $campaign->transfer_reference . ').'];
         }
+        if ($campaign->collectedByOfinit()) {
+            return $this->routeToSeema($campaign);
+        }
         // Monthly-invoice settlement: OfinIT's share is billed on the 1st instead of split here.
         if (!\App\Services\Platform\PlatformSettings::splitsEnabled()) {
             return ['ok' => false, 'message' => 'Settlement is by monthly invoice — no split.'];
@@ -322,6 +445,55 @@ class AdPaymentService
                 : $this->razorpayTransfer($campaign, $operator, $amount);
         } catch (\Throwable $e) {
             Log::warning("OfinIT ad share transfer failed for {$campaign->reference}: " . $e->getMessage());
+
+            return $this->recordTransfer($campaign, false, null, $amount, $e->getMessage());
+        }
+    }
+
+    /**
+     * Seema's share + GST, from OfinIT's Razorpay to Seema's Route linked
+     * account. Without the account id the payout waits ("pending") and the
+     * hourly job sends it once the id is saved. Idempotent.
+     */
+    private function routeToSeema(AdCampaign $campaign): array
+    {
+        $amount = min($campaign->seemaPayout(), (int) $campaign->total_amount);
+        if ($amount <= 0) {
+            return $this->recordTransfer($campaign, false, null, 0, 'No Seema share on this ad.', 'none');
+        }
+        $account = trim((string) \App\Services\Platform\PlatformSettings::get(\App\Services\Platform\PlatformSettings::SEEMA_ROUTE_ACCOUNT, ''));
+        if (!str_starts_with($account, 'acc_')) {
+            return $this->recordTransfer($campaign, false, null, $amount, "Waiting for Seema's Route linked account (Admin → Billing).", 'pending');
+        }
+        try {
+            $payment = $this->ofinitApi()->payment->fetch($campaign->transaction_id);
+            if ($payment->status === 'authorized') {
+                $payment = $payment->capture(['amount' => $payment->amount, 'currency' => 'INR']);
+            }
+            if ($payment->status !== 'captured') {
+                return $this->recordTransfer($campaign, false, null, $amount, "Payment is {$payment->status}, not captured.");
+            }
+            // An earlier attempt may have gone through: never pay Seema twice.
+            foreach ($payment->transfers()->items ?? [] as $existing) {
+                if (($existing->recipient ?? null) === $account && !in_array($existing->status ?? '', ['failed', 'reversed'], true)) {
+                    return $this->recordTransfer($campaign, true, $existing->id, (int) ($existing->amount ?? 0), null);
+                }
+            }
+            $result = $payment->transfer(['transfers' => [[
+                'account' => $account,
+                'amount' => $amount,
+                'currency' => 'INR',
+                'notes' => ['ad_campaign' => $campaign->reference, 'purpose' => 'Seema Holidays ad revenue share incl. GST'],
+                'on_hold' => false,
+            ]]]);
+            $transfer = $result->items[0] ?? null;
+            if (!$transfer || empty($transfer->id)) {
+                return $this->recordTransfer($campaign, false, null, $amount, 'Razorpay did not return a transfer id.');
+            }
+
+            return $this->recordTransfer($campaign, true, $transfer->id, $amount, null);
+        } catch (\Throwable $e) {
+            Log::warning("Route payout to Seema failed for {$campaign->reference}: " . $e->getMessage());
 
             return $this->recordTransfer($campaign, false, null, $amount, $e->getMessage());
         }
@@ -382,17 +554,19 @@ class AdPaymentService
         return $this->recordTransfer($campaign, true, 'cf_split_after:' . $campaign->pg_order_id, $amount, null);
     }
 
-    private function recordTransfer(AdCampaign $campaign, bool $ok, ?string $reference, int $amount, ?string $error): array
+    private function recordTransfer(AdCampaign $campaign, bool $ok, ?string $reference, int $amount, ?string $error, ?string $status = null): array
     {
         $campaign->forceFill([
-            'transfer_status' => $ok ? 'done' : 'failed',
+            'transfer_status' => $status ?? ($ok ? 'done' : 'failed'),
             'transfer_reference' => $reference,
             'transfer_amount' => $amount,
             'transfer_error' => $error ? mb_substr($error, 0, 500) : null,
             'transferred_at' => $ok ? now() : null,
         ])->save();
 
-        return ['ok' => $ok, 'message' => $ok ? 'Transferred ' . AdCampaign::rupees($amount) . " to OfinIT ({$reference})." : (string) $error];
+        $to = $campaign->collectedByOfinit() ? 'Seema Holidays' : 'OfinIT';
+
+        return ['ok' => $ok, 'message' => $ok ? 'Transferred ' . AdCampaign::rupees($amount) . " to {$to} ({$reference})." : (string) $error];
     }
 
     /**
@@ -413,7 +587,25 @@ class AdPaymentService
             : 0;
 
         try {
-            if ($campaign->payment_gateway === 'cashfree') {
+            if ($campaign->collectedByOfinit()) {
+                $payment = $this->ofinitApi()->payment->fetch($campaign->transaction_id);
+                $isFull = $amount + (int) $campaign->refund_amount >= (int) $payment->amount;
+                $refund = $payment->refund(array_filter([
+                    'amount' => $amount,
+                    // Full refund: Seema's Route transfer comes back with it.
+                    'reverse_all' => ($isFull && $campaign->transfer_reference) ? 1 : null,
+                    'notes' => ['ad_campaign' => $campaign->reference, 'reason' => mb_substr($note, 0, 200)],
+                ]));
+                $reference = (string) ($refund->id ?? 'razorpay');
+                if ($ofinitBack > 0 && !$isFull && str_starts_with((string) $campaign->transfer_reference, 'trf_')) {
+                    try {
+                        $this->ofinitApi()->transfer->fetch($campaign->transfer_reference)->reverse(['amount' => $ofinitBack]);
+                    } catch (\Throwable $e) {
+                        Log::warning("Seema share reversal failed for {$campaign->reference}: " . $e->getMessage());
+                        $campaign->forceFill(['transfer_error' => mb_substr('Refund done, but ' . AdCampaign::rupees($ofinitBack) . " of Seema's share not reversed: " . $e->getMessage(), 0, 500)])->save();
+                    }
+                }
+            } elseif ($campaign->payment_gateway === 'cashfree') {
                 $vendorId = trim((string) FleetOperator::orderBy('id')->value('cashfree_vendor_id'));
                 $refund = app(CashfreeService::class)->createRefund(
                     $campaign->pg_order_id,
@@ -456,6 +648,19 @@ class AdPaymentService
         ])->save();
 
         return $amount;
+    }
+
+    /** OfinIT's own Razorpay account (payment links, Route payouts to Seema). */
+    protected function ofinitApi(): Api
+    {
+        if (!\App\Services\Platform\PlatformSettings::razorpayConfigured()) {
+            throw new RuntimeException("OfinIT's Razorpay keys are not set (Admin → Billing).");
+        }
+
+        return new Api(
+            \App\Services\Platform\PlatformSettings::get(\App\Services\Platform\PlatformSettings::RZP_KEY),
+            \App\Services\Platform\PlatformSettings::secret(\App\Services\Platform\PlatformSettings::RZP_SECRET)
+        );
     }
 
     private function razorpay(): Api

@@ -115,6 +115,7 @@ Route::prefix('app')->name('customer.')->group(function () {
                 Route::post('campaigns/{campaign}', 'saveCampaign')->whereNumber('campaign')->name('campaigns.update');
                 Route::post('campaigns/{campaign}/creatives', 'uploadCreative')->whereNumber('campaign')->middleware('throttle:30,1')->name('campaigns.creatives');
                 Route::post('campaigns/{campaign}/checkout', 'checkout')->whereNumber('campaign')->middleware('throttle:20,1')->name('campaigns.checkout');
+                Route::get('campaigns/{campaign}/payment-status', 'paymentStatus')->whereNumber('campaign')->middleware('throttle:30,1')->name('campaigns.payment-status');
                 Route::post('campaigns/{campaign}/confirm', 'confirm')->whereNumber('campaign')->name('campaigns.confirm');
                 Route::post('campaigns/{campaign}/resubmit', 'resubmit')->whereNumber('campaign')->name('campaigns.resubmit');
                 Route::post('campaigns/{campaign}/discard', 'discard')->whereNumber('campaign')->name('campaigns.discard');

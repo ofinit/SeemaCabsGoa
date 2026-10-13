@@ -23,6 +23,14 @@ class PreparePlatformFeeInvoice extends Command
             ? Carbon::createFromFormat('Y-m', $this->argument('month'), 'Asia/Kolkata')->startOfMonth()
             : now('Asia/Kolkata')->subMonthNoOverflow()->startOfMonth();
 
+        // Seema → OfinIT ad revenue share (already paid by Route) — issued automatically in either mode.
+        $share = $invoices->adRevenueShare($month);
+        if ($share['invoice'] || $share['credit_note']) {
+            $this->info("Ad revenue share for {$month->format('F Y')}: {$share['campaigns']} ad(s)"
+                . ($share['invoice'] ? ', ' . ($share['invoice']->number ?? 'draft') : '')
+                . ($share['credit_note'] ? ', credit note ' . ($share['credit_note']->number ?? 'draft') : '') . '.');
+        }
+
         // Monthly-invoice settlement: issue, work out what's due, create the payment links, email Seema.
         if (\App\Services\Platform\PlatformSettings::mode() === \App\Services\Platform\PlatformSettings::INVOICE) {
             $result = app(\App\Services\Platform\PlatformBilling::class)->monthlyRun($month);

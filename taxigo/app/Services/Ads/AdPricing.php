@@ -189,7 +189,8 @@ class AdPricing
         if (!Gstin::isValid($gstin)) {
             return false;
         }
-        $supplierState = optional(BusinessProfile::supplier())->state_code ?: '30';
+        // Ads are sold by OfinIT (the platform profile); fall back to Seema's state.
+        $supplierState = optional(BusinessProfile::platform())->state_code ?: (optional(BusinessProfile::supplier())->state_code ?: '30');
 
         return Gstin::stateCode(Gstin::normalize($gstin)) !== $supplierState;
     }

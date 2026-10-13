@@ -37,6 +37,7 @@
                     {{ $label }}@isset($tabCounts[$key]) ({{ $tabCounts[$key] }})@endisset
                 </a>
             @endforeach
+            <a class="btn btn-sm btn-outline-success" href="{{ route('admin.advertisements.selfServe.complimentary') }}">+ Complimentary ad (no payment)</a>
             <form class="ms-auto d-flex gap-2" method="GET">
                 <input type="hidden" name="tab" value="{{ $tab }}">
                 <input class="form-control form-control-sm" name="q" value="{{ request('q') }}" placeholder="Reference or business">
@@ -73,7 +74,7 @@
                                         </td>
                                         <td>{{ $campaign->items->map(fn ($i) => $i->placement->code)->implode(', ') }}</td>
                                         <td class="small">{{ $campaign->start_date?->format('d-m-Y') }} → {{ $campaign->end_date?->format('d-m-Y') }}<br>{{ $campaign->days }} days</td>
-                                        <td class="text-end">{{ AdCampaign::rupees($campaign->total_amount) }}</td>
+                                        <td class="text-end">{!! $campaign->complimentary ? '<span class="badge bg-light-success">Complimentary</span>' : e(AdCampaign::rupees($campaign->total_amount)) !!}</td>
                                         <td>
                                             <span class="badge bg-light-secondary">{{ $campaign->displayStatus() }}</span>
                                             @if ($campaign->needs_second_approval)<span class="badge bg-light-warning">2 admins</span>@endif

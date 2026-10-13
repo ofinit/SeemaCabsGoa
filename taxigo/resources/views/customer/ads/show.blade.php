@@ -51,7 +51,7 @@
                     @break
                 @case(AdCampaign::DRAFT)
                 @case(AdCampaign::PENDING_PAYMENT)
-                    <a href="{{ route('customer.ads.edit', $campaign) }}" class="btn-primary w-full">Continue</a>
+                    <a href="{{ route('customer.ads.edit', $campaign) }}" class="btn-primary w-full">Complete payment</a>
                     @break
             @endswitch
         </div>

@@ -20,7 +20,7 @@ class MaintainAds extends Command
     {
         $result = $ads->maintain();
         $this->info("Expired {$result['expired']}, reminded {$result['reminded']}, recovered {$result['recovered']} payment(s), closed {$result['stale']} stale draft(s), "
-            . "paused {$result['licences']} for expired licences and {$result['links']} for broken links, sent {$result['pushes']} sponsored push(es), settled {$result['refunds']} refund(s).");
+            . "paused {$result['licences']} for expired licences and {$result['links']} for broken links, sent {$result['pushes']} sponsored push(es), settled {$result['refunds']} refund(s), sent {$result['payouts']} Route payout(s) to Seema.");
 
         return self::SUCCESS;
     }

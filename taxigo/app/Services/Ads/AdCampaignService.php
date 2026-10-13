@@ -21,6 +21,7 @@ use App\Services\Invoicing\InvoiceService;
 use App\Services\NotificationService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
@@ -60,7 +61,8 @@ class AdCampaignService
         $settings = AdSettings::load();
         $min = (int) $settings[AdSettings::MIN_DAYS];
         $max = (int) $settings[AdSettings::MAX_DAYS];
-        if ($days < $min || $days > $max) {
+        // Complimentary ads by the admin may be shorter or longer than self-serve bookings.
+        if (empty($options['admin']) && ($days < $min || $days > $max)) {
             throw new RuntimeException("Book between {$min} and {$max} days.");
         }
         // Paid campaigns keep their placements, dates and targeting while changes are requested.
@@ -621,6 +623,102 @@ class AdCampaignService
      * (`refund_due`) so the hourly job and the admin "Retry refund" button
      * can finish it.
      */
+    /**
+     * An ad the admin runs without payment (house ads, partners, goodwill).
+     * Same placements, slot checks and serving as a paid ad, but no money,
+     * no invoice, no Route payout and no review queue.
+     *
+     * @param  array<string, UploadedFile>  $images  image per shape key ("1080x1350"); "default" fills the rest
+     */
+    public function createComplimentary(array $data, array $images, int $adminId, AdCreativeProcessor $processor): AdCampaign
+    {
+        $admin = \App\Models\User::findOrFail($adminId);
+        $advertiser = AdAdvertiser::firstOrCreate(
+            ['user_id' => $adminId, 'business_name' => trim($data['business_name'])],
+            [
+                'category_id' => (int) $data['category_id'],
+                'contact_name' => $admin->name ?: 'Admin',
+                'phone' => (string) ($admin->phone_number ?: '0000000000'),
+                'email' => (string) ($admin->email ?: 'noreply@seemacabsgoa.com'),
+            ]
+        );
+        if ((int) $advertiser->category_id !== (int) $data['category_id']) {
+            $advertiser->forceFill(['category_id' => (int) $data['category_id']])->save();
+        }
+
+        $campaign = $this->saveDraft(null, $advertiser, $data['placements'], $data['start_date'], (int) $data['days'],
+            $data['landing_type'], (string) ($data['landing_value'] ?? ''), [
+                'targeting' => (array) ($data['targeting'] ?? []),
+                'headline' => $data['headline'] ?? null,
+                'push_body' => $data['push_body'] ?? null,
+                'admin' => true,
+            ]);
+
+        try {
+            foreach ($campaign->items->pluck('placement')->unique(fn ($p) => $p->shapeKey()) as $placement) {
+                $file = $images[$placement->shapeKey()] ?? $images['default'] ?? null;
+                if (!$file) {
+                    continue;
+                }
+                $processed = $processor->process($file, self::centreCrop($file, $placement->width, $placement->height), $placement->width, $placement->height);
+                $this->saveCreative($campaign, $placement->shapeKey(), $processed);
+            }
+            // The admin vouches for the advertiser: no licence upload needed.
+            $problems = array_filter($this->problems($campaign->fresh()), fn ($p) => !str_starts_with($p, 'Upload your') && !str_starts_with($p, 'Your advertiser account'));
+            if ($problems) {
+                throw new RuntimeException(implode(' ', $problems));
+            }
+
+            return DB::transaction(function () use ($campaign, $adminId, $data) {
+                $placements = AdPlacement::whereIn('id', $campaign->items->pluck('placement_id'))->lockForUpdate()->get();
+                [$from, $to] = [$campaign->start_date->toDateString(), $campaign->end_date->toDateString()];
+                $conflicts = AdAvailability::conflicts($placements, $from, $to, $campaign->id, (array) ($campaign->targeting['page_groups'] ?? []), self::unitsFor($placements, $campaign->targeting));
+                if ($conflicts) {
+                    $list = collect($conflicts)->map(fn ($date, $code) => $code . ' (from ' . Carbon::parse($date)->format('d M') . ')')->implode(', ');
+                    throw new RuntimeException("Sold out: {$list}. Choose other dates or placements.");
+                }
+                $zero = array_fill_keys(['list_amount', 'peak_amount', 'bundle_discount', 'exclusivity_amount', 'discount_amount', 'promo_discount',
+                    'net_amount', 'cgst_amount', 'sgst_amount', 'igst_amount', 'total_amount', 'ofinit_amount', 'ofinit_gst', 'ofinit_total'], 0);
+                $campaign->forceFill($zero + [
+                    'complimentary' => true,
+                    'promo_label' => 'Complimentary',
+                    'coupon_id' => null,
+                    'status' => AdCampaign::APPROVED,
+                    'submitted_at' => now(),
+                    'reviewed_at' => now(),
+                    'reviewed_by' => $adminId,
+                    'review_note' => $data['note'] ?? null,
+                    'hold_expires_at' => null,
+                ])->save();
+                $campaign->items()->update(['subtotal' => 0]);
+                $this->log($campaign, $adminId, 'first', 'free', [], [], $data['note'] ?? 'Complimentary ad (no payment)');
+                $this->materialize($campaign);
+
+                return $campaign->fresh(['items.placement', 'creatives']);
+            });
+        } catch (\Throwable $e) {
+            // Nothing half-made stays behind.
+            $campaign->items()->delete();
+            $campaign->creatives()->delete();
+            $campaign->delete();
+            throw $e;
+        }
+    }
+
+    /** The largest centred area of the image with the placement's shape. */
+    public static function centreCrop(UploadedFile $file, int $width, int $height): array
+    {
+        $info = @getimagesize($file->getRealPath());
+        if (!$info) {
+            throw new RuntimeException('Upload a JPEG, PNG or WebP image.');
+        }
+        [$w, $h] = $info;
+        $ratio = $width / $height;
+        [$cw, $ch] = $w / $h > $ratio ? [$h * $ratio, $h] : [$w, $w / $ratio];
+
+        return ['x' => ($w - $cw) / 2, 'y' => ($h - $ch) / 2, 'width' => $cw, 'height' => $ch, 'rotate' => 0];
+    }
+
     private function refundAndCredit(AdCampaign $campaign, int $amount, string $reason): int
     {
         if (!$campaign->isPaid() || $amount <= 0) {
@@ -695,7 +793,7 @@ class AdCampaignService
                 'billing_gst' => $campaign->advertiser->gstin,
                 'payment_method' => 'online',
                 'default' => 0,
-                'total_amount' => $item->subtotal / 100,
+                'total_amount' => $campaign->complimentary ? 0 : $item->subtotal / 100,
                 'approval_status' => Advertisement::APPROVED,
                 'payment_status' => 'paid',
                 'status_changed_at' => now(),
@@ -829,10 +927,19 @@ class AdCampaignService
                 $refunds += $this->payments->refundStrays($campaign);
             });
 
+        // Seema's Route payout on OfinIT-sold ads that failed or waited for the linked account.
+        $payouts = 0;
+        AdCampaign::where('payment_gateway', 'ofinit')->whereNotNull('paid_at')->where('paid_at', '>', now()->subDays(30))
+            ->whereIn('transfer_status', ['pending', 'failed'])->whereNull('transfer_reference')
+            ->where('status', '!=', AdCampaign::CANCELLED)->whereColumn('refund_amount', '<', 'total_amount')->limit(50)->get()
+            ->each(function (AdCampaign $campaign) use (&$payouts) {
+                $payouts += $this->payments->transfer($campaign, true)['ok'] ? 1 : 0;
+            });
+
         $stale = AdCampaign::whereIn('status', [AdCampaign::DRAFT, AdCampaign::PENDING_PAYMENT])->whereNull('paid_at')
             ->where('updated_at', '<', now()->subDays(14))->update(['status' => AdCampaign::CANCELLED, 'hold_expires_at' => null]);
 
-        return compact('expired', 'reminded', 'recovered', 'stale', 'licences', 'links', 'pushes', 'refunds');
+        return compact('expired', 'reminded', 'recovered', 'stale', 'licences', 'links', 'pushes', 'refunds', 'payouts');
     }
 
     /**
@@ -961,6 +1068,9 @@ class AdCampaignService
 
     public function notify(AdCampaign $campaign, string $title, string $body): void
     {
+        if ($campaign->complimentary) {
+            return; // run by the admin, nobody to tell
+        }
         try {
             $data = ['type' => 'ad_campaign', 'campaign' => $campaign->reference];
             $link = route('customer.ads.show', $campaign);

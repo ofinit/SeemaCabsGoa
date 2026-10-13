@@ -348,17 +348,17 @@
                 <p class="text-xs text-danger" x-show="couponError" x-text="couponError"></p>
                 <p class="text-xs text-muted" x-show="quote && quote.coupon_note" x-text="quote && quote.coupon_note"></p>
                 <p class="text-xs text-muted">Your slots are held for 15 minutes while you pay. If your ad isn't approved, you get a full refund automatically.</p>
+                <p class="text-xs text-muted">Ad space is sold by OfinIT Solutions, the platform provider of Seema Cabs Goa. You pay on OfinIT's secure Razorpay page and get OfinIT's GST invoice.</p>
             </div>
 
-            <div class="card space-y-2" x-show="pg.razorpay_enabled && pg.cashfree_enabled">
-                <p class="field-label">Pay with</p>
-                <div class="grid grid-cols-2 gap-2">
-                    <button type="button" class="btn-outline !py-2.5 text-sm" :class="gateway === 'razorpay' && 'ring-2 ring-gold'" @click="gateway = 'razorpay'">Razorpay</button>
-                    <button type="button" class="btn-outline !py-2.5 text-sm" :class="gateway === 'cashfree' && 'ring-2 ring-gold'" @click="gateway = 'cashfree'">Cashfree</button>
-                </div>
+            <div class="card space-y-2 text-center" x-show="waiting" style="display:none">
+                <p class="font-semibold text-ink">Complete the payment in the new tab</p>
+                <p class="text-sm text-muted">This page updates by itself once the payment goes through.</p>
+                <a :href="paymentUrl" target="_blank" rel="noopener" class="btn-outline w-full !py-2.5 text-sm" x-show="paymentUrl">Open the payment page again</a>
+                <button type="button" class="w-full text-sm text-muted underline" @click="checkPayment(true)">I've paid — check now</button>
             </div>
 
-            <button type="button" class="btn-primary w-full" @click="pay()" :disabled="busy">
+            <button type="button" class="btn-primary w-full" @click="pay()" :disabled="busy" x-show="!waiting">
                 <span x-text="busy ? 'Please wait…' : 'Pay ' + (quote ? money(quote.total_amount) : '')"></span>
             </button>
             <button type="button" class="w-full text-sm text-muted underline" @click="discard()" x-show="campaign && !campaign.paid">Cancel this ad</button>
@@ -384,8 +384,6 @@
 
 @push('scripts')
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.6.2/cropper.min.js"></script>
-<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
-<script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
 <script>
 function adWizard() {
     const routes = {
@@ -430,8 +428,7 @@ function adWizard() {
         licence: { number: '', valid_until: '' },
         crop: { open: false, shape: null, file: null, warning: '' },
         cropper: null,
-        pg: { razorpay_enabled: true, cashfree_enabled: false, primary: 'both', cashfree_mode: 'sandbox' },
-        gateway: 'razorpay', paymentKey: '',
+        waiting: false, paymentUrl: '', pollTimer: null,
         busy: false, error: '',
 
         init() {
@@ -459,7 +456,6 @@ function adWizard() {
             this.days = Math.max(this.days, this.rules.min_days);
             this.step = !this.hasProfile ? 'business' : (this.locked ? 'creative' : (this.campaign ? 'dates' : 'placements'));
             if (this.selected.length) this.loadAvailability();
-            this.loadGateways();
         },
 
         get stepIndex() { return this.steps.findIndex(s => s.key === this.step); },
@@ -660,19 +656,6 @@ function adWizard() {
         },
 
         // ---- Submit & pay
-        async loadGateways() {
-            try {
-                const res = await apiFetch(routes.settings);
-                if (res && res.data) {
-                    this.pg.razorpay_enabled = res.data.razorpay_enabled;
-                    this.pg.cashfree_enabled = res.data.cashfree_enabled;
-                    this.pg.primary = res.data.primary_payment_gateway || 'both';
-                    this.pg.cashfree_mode = res.data.cashfree_mode || 'sandbox';
-                    this.paymentKey = res.data.payment_key || '';
-                    this.gateway = (this.pg.cashfree_enabled && (!this.pg.razorpay_enabled || this.pg.primary === 'cashfree')) ? 'cashfree' : 'razorpay';
-                }
-            } catch (e) { /* defaults */ }
-        },
         async applyCoupon() {
             this.busy = true; this.error = ''; this.couponError = '';
             try {
@@ -696,40 +679,37 @@ function adWizard() {
                 window.location.href = res.data.redirect;
             } catch (e) { this.error = e.message; }
         },
-        async confirmPayment(reference) {
-            const res = await apiFetch(routes.base + '/' + this.campaign.id + '/confirm', { method: 'POST', body: { gateway: this.gateway, reference } });
-            window.location.href = res.data.redirect;
-        },
         async pay() {
             this.busy = true; this.error = '';
+            // Open the tab now, inside the click, so pop-up blockers allow it.
+            const tab = window.open('', '_blank');
+            if (tab) tab.document.write('<p style="font-family:sans-serif;padding:2rem">Opening the secure payment page…</p>');
             try {
                 if (!this.locked) await this.saveDraft();
-                const res = await apiFetch(routes.base + '/' + this.campaign.id + '/checkout', { method: 'POST', body: { gateway: this.gateway, checklist: this.ticks } });
-                const order = res.data;
-                if (order.redirect) { window.location.href = order.redirect; return; }
-                if (this.gateway === 'cashfree') {
-                    const cashfree = Cashfree({ mode: order.mode || this.pg.cashfree_mode });
-                    cashfree.checkout({ paymentSessionId: order.payment_session_id, redirectTarget: '_modal' }).then(async (result) => {
-                        if (result.error) { this.busy = false; this.error = result.error.message || 'Payment was cancelled.'; return; }
-                        if (result.paymentDetails) {
-                            try { await this.confirmPayment(order.order_id); } catch (e) { this.busy = false; this.error = e.message; }
-                        }
-                    });
-                } else {
-                    const rzp = new Razorpay({
-                        key: this.paymentKey, amount: order.amount, currency: order.currency, order_id: order.order_id,
-                        name: 'Seema Holidays', description: 'Advertising ' + order.reference,
-                        prefill: { name: this.profile.contact_name, email: this.profile.email, contact: this.profile.phone },
-                        theme: { color: '#FEDC33' },
-                        handler: async (response) => {
-                            try { await this.confirmPayment(response.razorpay_payment_id); } catch (e) { this.busy = false; this.error = e.message; }
-                        },
-                        modal: { ondismiss: () => { this.busy = false; } },
-                    });
-                    rzp.on('payment.failed', () => { this.busy = false; this.error = 'Payment failed. Please try again.'; });
-                    rzp.open();
-                }
-            } catch (e) { this.error = e.message; this.busy = false; }
+                const res = await apiFetch(routes.base + '/' + this.campaign.id + '/checkout', { method: 'POST', body: { checklist: this.ticks } });
+                if (res.data.redirect) { if (tab) tab.close(); window.location.href = res.data.redirect; return; }
+                this.paymentUrl = res.data.payment_url;
+                if (tab) tab.location.href = this.paymentUrl; else window.open(this.paymentUrl, '_blank');
+                this.waiting = true;
+                this.watchPayment();
+            } catch (e) { if (tab) tab.close(); this.error = e.message; }
+            this.busy = false;
+        },
+        watchPayment() {
+            clearInterval(this.pollTimer);
+            const started = Date.now();
+            this.pollTimer = setInterval(() => {
+                if (Date.now() - started > 30 * 60 * 1000) { clearInterval(this.pollTimer); return; }
+                this.checkPayment(false);
+            }, 5000);
+            document.addEventListener('visibilitychange', () => { if (!document.hidden && this.waiting) this.checkPayment(false); });
+        },
+        async checkPayment(manual) {
+            try {
+                const res = await apiFetch(routes.base + '/' + this.campaign.id + '/payment-status');
+                if (res.data.paid) { clearInterval(this.pollTimer); window.location.href = res.data.redirect; return; }
+                if (manual) this.error = 'We have not received the payment yet. If money was deducted, it will show here within a few minutes.';
+            } catch (e) { if (manual) this.error = e.message; }
         },
     };
 }

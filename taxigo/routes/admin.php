@@ -313,6 +313,8 @@ Route::group(['prefix' => 'admin', 'middleware' => ['auth', 'TwoFa', 'admin.only
             Route::post('/qr-cards/{card}', 'updateQrCard')->name('qrCards.update');
             Route::post('/push/{push}/send', 'sendPush')->name('push.send');
             Route::post('/agencies/{agency}', 'updateAgency')->name('agencies.update');
+            Route::get('/complimentary', 'createComplimentary')->name('complimentary');
+            Route::post('/complimentary', 'storeComplimentary')->name('complimentary.store');
             Route::get('/{campaign}', 'show')->whereNumber('campaign')->name('show');
             Route::post('/{campaign}/decide', 'decide')->whereNumber('campaign')->name('decide');
             Route::post('/{campaign}/pause', 'pause')->whereNumber('campaign')->name('pause');

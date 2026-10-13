@@ -4,15 +4,18 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Invoice;
+use App\Services\Ads\AdCampaignService;
+use App\Services\Ads\AdPaymentService;
 use App\Services\Platform\OfinitPaymentLinks;
 use App\Services\Platform\PlatformBilling;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Webhook from OfinIT's own Razorpay account (event: payment_link.paid).
- * The signature is checked with OfinIT's webhook secret, and the link is then
- * re-checked with Razorpay before the invoice is marked paid.
+ * Webhook from OfinIT's own Razorpay account (event: payment_link.paid) for
+ * Seema's monthly invoices and for ads OfinIT sells. The signature is checked
+ * with OfinIT's webhook secret, and the link is then re-checked with Razorpay
+ * before anything is marked paid.
  */
 class OfinitRazorpayWebhookController extends Controller
 {
@@ -27,8 +30,12 @@ class OfinitRazorpayWebhookController extends Controller
 
         $event = json_decode($body, true) ?: [];
         if (($event['event'] ?? '') === 'payment_link.paid') {
-            $linkId = $event['payload']['payment_link']['entity']['id'] ?? null;
+            $entity = $event['payload']['payment_link']['entity'] ?? [];
+            $linkId = $entity['id'] ?? null;
             $invoice = $linkId ? Invoice::where('payment_link_id', $linkId)->first() : null;
+            if (!$invoice && $linkId) {
+                $this->adPaid($linkId, $entity['notes']['campaign_id'] ?? null);
+            }
             if ($invoice && !$invoice->paid_at) {
                 try {
                     $billing->refreshLink($invoice);
@@ -40,5 +47,22 @@ class OfinitRazorpayWebhookController extends Controller
         }
 
         return response()->json(['status' => true]);
+    }
+
+    /** An advertiser paid OfinIT's payment link for an ad. */
+    private function adPaid(string $linkId, ?string $campaignId): void
+    {
+        $campaign = AdPaymentService::campaignForLink($linkId, $campaignId);
+        if (!$campaign || $campaign->isPaid()) {
+            return;
+        }
+        try {
+            if ($paid = app(AdPaymentService::class)->reconcile($campaign)) {
+                app(AdCampaignService::class)->paymentReceived($campaign, $paid['gateway'], $paid['transaction_id']);
+            }
+        } catch (\Throwable $e) {
+            // The advertiser's page and the hourly maintenance re-check it.
+            Log::warning("Ad payment link {$linkId} ({$campaign->reference}) check failed: " . $e->getMessage());
+        }
     }
 }

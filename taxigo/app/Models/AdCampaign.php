@@ -70,6 +70,7 @@ class AdCampaign extends Model
         'inter_state' => 'boolean',
         'needs_second_approval' => 'boolean',
         'auto_approve' => 'boolean',
+        'complimentary' => 'boolean',
     ];
 
     public function advertiser(): BelongsTo
@@ -173,6 +174,24 @@ class AdCampaign extends Model
             self::CANCELLED => $this->refunded_at ? 'Cancelled · refunded' : 'Cancelled',
             default => ucfirst(str_replace('_', ' ', (string) $this->status)),
         };
+    }
+
+    /** Paid through OfinIT's Razorpay payment link (OfinIT sells the ad). */
+    public function collectedByOfinit(): bool
+    {
+        return $this->payment_gateway === 'ofinit';
+    }
+
+    /** Seema Holidays' share of the ad price, before GST (paise). */
+    public function seemaShare(): int
+    {
+        return max(0, (int) $this->net_amount - (int) $this->ofinit_amount);
+    }
+
+    /** What Route sends to Seema: its share plus GST on it (paise). */
+    public function seemaPayout(): int
+    {
+        return $this->seemaShare() + (int) round($this->seemaShare() * (float) $this->gst_rate / 100);
     }
 
     public function gstAmount(): int

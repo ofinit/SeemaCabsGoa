@@ -242,11 +242,18 @@
                         <tr><td colspan="2">Net (taxable)</td><td class="text-end">{{ AdCampaign::rupees($campaign->net_amount) }}</td></tr>
                         <tr><td colspan="2">{{ $campaign->inter_state ? 'IGST' : 'CGST + SGST' }} {{ (float) $campaign->gst_rate }}%</td><td class="text-end">{{ AdCampaign::rupees($campaign->gstAmount()) }}</td></tr>
                         <tr class="fw-bold"><td colspan="2">Total</td><td class="text-end">{{ AdCampaign::rupees($campaign->total_amount) }}</td></tr>
-                        <tr><td colspan="2">OfinIT share ({{ 100 - (float) $campaign->seema_percent }}% of amount paid, incl. GST)</td><td class="text-end">{{ AdCampaign::rupees($campaign->ofinit_total) }}</td></tr>
-                        <tr><td colspan="2">Seema Holidays keeps</td><td class="text-end">{{ AdCampaign::rupees($campaign->total_amount - $campaign->ofinit_total) }}</td></tr>
+                        @if ($campaign->complimentary)
+                            <tr><td colspan="3"><span class="badge bg-light-success">Complimentary</span> Run by the admin without payment — no invoice, no payout.</td></tr>
+                        @elseif ($campaign->collectedByOfinit() || !$campaign->isPaid())
+                            <tr><td colspan="2">Sold by OfinIT · Seema Holidays' share ({{ (float) $campaign->seema_percent }}% + GST, by Route)</td><td class="text-end">{{ AdCampaign::rupees($campaign->seemaPayout()) }}</td></tr>
+                            <tr><td colspan="2">OfinIT keeps</td><td class="text-end">{{ AdCampaign::rupees($campaign->total_amount - $campaign->seemaPayout()) }}</td></tr>
+                        @else
+                            <tr><td colspan="2">OfinIT share ({{ 100 - (float) $campaign->seema_percent }}% of amount paid, incl. GST)</td><td class="text-end">{{ AdCampaign::rupees($campaign->ofinit_total) }}</td></tr>
+                            <tr><td colspan="2">Seema Holidays keeps</td><td class="text-end">{{ AdCampaign::rupees($campaign->total_amount - $campaign->ofinit_total) }}</td></tr>
+                        @endif
                     </table>
                     <p class="mb-1">Payment: {{ $campaign->isPaid() ? ucfirst($campaign->payment_gateway) . ' ' . $campaign->transaction_id . ' · ' . $campaign->paid_at->format('d-m-Y H:i') : 'not paid' }}</p>
-                    <p class="mb-1">OfinIT split:
+                    <p class="mb-1">{{ $campaign->collectedByOfinit() ? 'Route payout to Seema Holidays' : 'OfinIT split' }}:
                         @if ($campaign->transfer_status === 'done')
                             <span class="text-success">{{ AdCampaign::rupees($campaign->transfer_amount) }} · {{ $campaign->transfer_reference }}</span>
                         @elseif ($campaign->isPaid())
@@ -272,7 +279,7 @@
                 </div>
             </div>
 
-            @if ($campaign->isPaid())
+            @if ($campaign->isPaid() || $campaign->complimentary)
                 <div class="card">
                     <div class="card-header d-flex justify-content-between"><h5 class="mb-0">Results</h5><a class="small" href="{{ route('admin.advertisements.selfServe.export', $campaign) }}">CSV</a></div>
                     <div class="card-body small">
@@ -310,7 +317,7 @@
                 </div>
             @endif
 
-            @if ($campaign->isPaid() && in_array($campaign->status, [AdCampaign::IN_REVIEW, AdCampaign::CHANGES_REQUESTED, AdCampaign::APPROVED, AdCampaign::PAUSED]))
+            @if (($campaign->isPaid() || $campaign->complimentary) && in_array($campaign->status, [AdCampaign::IN_REVIEW, AdCampaign::CHANGES_REQUESTED, AdCampaign::APPROVED, AdCampaign::PAUSED]))
                 @php
                     $today = now('Asia/Kolkata')->startOfDay();
                     $used = $campaign->start_date->lte($today) ? min($campaign->days, (int) $campaign->start_date->diffInDays($today, true)) : 0;
@@ -320,7 +327,7 @@
                     <div class="card-header"><h5 class="mb-0 text-danger">Cancel &amp; refund</h5></div>
                     <form method="POST" action="{{ route('admin.advertisements.selfServe.cancel', $campaign) }}" class="card-body" onsubmit="return confirm('Cancel this ad and refund the amount entered?')">
                         @csrf
-                        <p class="small text-muted">Before the start date: full refund. After it starts: pro rata for unused days ({{ $used }} of {{ $campaign->days }} used). OfinIT's split is reversed in proportion and a credit note is issued.</p>
+                        <p class="small text-muted">Before the start date: full refund. After it starts: pro rata for unused days ({{ $used }} of {{ $campaign->days }} used). {{ $campaign->collectedByOfinit() ? "Seema's Route payout is reversed in proportion" : "OfinIT's split is reversed in proportion" }} and a credit note is issued.</p>
                         <label class="form-label small">Refund (₹)</label>
                         <input class="form-control form-control-sm mb-2" name="refund" type="number" step="0.01" min="0" value="{{ number_format($suggested / 100, 2, '.', '') }}">
                         <input class="form-control form-control-sm mb-2" name="note" placeholder="Reason (shown to the advertiser)" required>

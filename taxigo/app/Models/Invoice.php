@@ -17,6 +17,8 @@ class Invoice extends Model
     // Advertising: Seema Holidays → advertiser, and OfinIT → Seema Holidays (monthly).
     public const AD_INVOICE = 'ad_invoice';
     public const AD_PLATFORM_FEE = 'ad_platform_fee';
+    // Seema Holidays → OfinIT: Seema's share of ads OfinIT sold (paid by Route).
+    public const AD_REVENUE_SHARE = 'ad_revenue_share';
 
     public const DRAFT = 'draft';
     public const ISSUED = 'issued';
@@ -29,6 +31,7 @@ class Invoice extends Model
         self::PLATFORM_FEE => 'Tax Invoice (Platform Fee)',
         self::AD_INVOICE => 'Tax Invoice (Advertising)',
         self::AD_PLATFORM_FEE => 'Tax Invoice (Ad Platform)',
+        self::AD_REVENUE_SHARE => 'Tax Invoice (Ad Revenue Share)',
     ];
 
     /** Number series code per document type. */
@@ -40,6 +43,7 @@ class Invoice extends Model
         self::PLATFORM_FEE => 'PF',
         self::AD_INVOICE => 'AD',
         self::AD_PLATFORM_FEE => 'AP',
+        self::AD_REVENUE_SHARE => 'RS',
     ];
 
     protected $guarded = ['id'];

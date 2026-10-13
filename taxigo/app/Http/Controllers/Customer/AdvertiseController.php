@@ -158,9 +158,13 @@ class AdvertiseController extends Controller
         ]);
     }
 
-    public function show(AdCampaign $campaign)
+    public function show(AdCampaign $campaign, AdPaymentService $payments)
     {
         $this->own($campaign);
+        // Back from OfinIT's payment page: credit the payment straight away (the webhook may lag).
+        if ($campaign->status === AdCampaign::PENDING_PAYMENT && $campaign->collectedByOfinit() && ($paid = $payments->reconcile($campaign))) {
+            $campaign = $this->ads->paymentReceived($campaign, $paid['gateway'], $paid['transaction_id']);
+        }
         $campaign->load('items.placement', 'creatives', 'invoices', 'advertiser');
 
         return view('customer.ads.show', [
@@ -428,11 +432,13 @@ class AdvertiseController extends Controller
         return response()->json(['status' => true, 'data' => $this->campaignJson($campaign->fresh(['items.placement', 'creatives']))]);
     }
 
-    /** Validate, hold the slots and open the gateway order. */
+    /**
+     * Validate, hold the slots and open OfinIT's payment page (a Razorpay
+     * payment link on OfinIT's account — OfinIT sells the ad space).
+     */
     public function checkout(Request $request, AdCampaign $campaign, AdPaymentService $payments)
     {
         $this->own($campaign);
-        $request->validate(['gateway' => 'required|in:razorpay,cashfree']);
         if ($error = $this->checklistError($request)) {
             return response()->json(['status' => false, 'message' => $error], 422);
         }
@@ -446,9 +452,12 @@ class AdvertiseController extends Controller
         try {
             $campaign = $this->ads->startCheckout($campaign);
             $this->recordChecklist($campaign, $request);
-            $order = $request->input('gateway') === 'cashfree'
-                ? $payments->createCashfreeOrder($campaign)
-                : $payments->createRazorpayOrder($campaign);
+            $order = $payments->createOfinitLink($campaign);
+            if (isset($order['paid'])) {
+                $campaign = $this->ads->paymentReceived($campaign, $order['paid']['gateway'], $order['paid']['transaction_id']);
+
+                return response()->json(['status' => true, 'data' => ['redirect' => route('customer.ads.show', $campaign)]]);
+            }
         } catch (RuntimeException $e) {
             return response()->json(['status' => false, 'message' => $e->getMessage()], 422);
         } catch (\Throwable $e) {
@@ -461,6 +470,21 @@ class AdvertiseController extends Controller
             'reference' => $campaign->reference,
             'total' => $campaign->total_amount,
         ])]);
+    }
+
+    /** Polled by the wizard while the payment page is open in another tab. */
+    public function paymentStatus(AdCampaign $campaign, AdPaymentService $payments)
+    {
+        $this->own($campaign);
+        if (!$campaign->isPaid() && ($paid = $payments->reconcile($campaign))) {
+            $campaign = $this->ads->paymentReceived($campaign, $paid['gateway'], $paid['transaction_id']);
+        }
+
+        return response()->json(['status' => true, 'data' => [
+            'paid' => $campaign->isPaid(),
+            'state' => $campaign->status,
+            'redirect' => $campaign->isPaid() ? route('customer.ads.show', $campaign) : null,
+        ]]);
     }
 
     public function confirm(Request $request, AdCampaign $campaign, AdPaymentService $payments)

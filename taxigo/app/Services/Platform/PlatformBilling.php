@@ -50,6 +50,14 @@ class PlatformBilling
             ->orderByDesc('period_start')->orderByDesc('id');
     }
 
+    /** Seema → OfinIT ad revenue share invoices and their credit notes, newest first. */
+    public static function revenueShareDocuments(): \Illuminate\Database\Eloquent\Builder
+    {
+        return Invoice::where(fn ($q) => $q->where('type', Invoice::AD_REVENUE_SHARE)
+            ->orWhere(fn ($q) => $q->where('type', Invoice::CREDIT_NOTE)->whereRaw("JSON_EXTRACT(meta, '$.revenue_share') = true")))
+            ->orderByDesc('period_start')->orderByDesc('id');
+    }
+
     /** Issued invoices with money still owed. */
     public static function unpaid(): \Illuminate\Database\Eloquent\Builder
     {

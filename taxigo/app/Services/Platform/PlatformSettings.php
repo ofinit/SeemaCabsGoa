@@ -27,6 +27,8 @@ class PlatformSettings
     public const RZP_KEY = 'ofinit_razorpay_key_id';
     public const RZP_SECRET = 'ofinit_razorpay_key_secret';
     public const RZP_WEBHOOK_SECRET = 'ofinit_razorpay_webhook_secret';
+    /** Seema Holidays' Route linked account on OfinIT's Razorpay (receives its ad share). */
+    public const SEEMA_ROUTE_ACCOUNT = 'ads_seema_route_account';
 
     public const SPLIT = 'split';
     public const INVOICE = 'invoice';
@@ -40,7 +42,7 @@ class PlatformSettings
     {
         self::$cache ??= Environment::whereIn('title', [
             self::MODE, self::BILLING_EMAILS, self::SUSPENDED, self::SUSPENDED_AT, self::SUSPENDED_REASON,
-            self::RZP_KEY, self::RZP_SECRET, self::RZP_WEBHOOK_SECRET,
+            self::RZP_KEY, self::RZP_SECRET, self::RZP_WEBHOOK_SECRET, self::SEEMA_ROUTE_ACCOUNT,
         ])->pluck('value', 'title')->all();
 
         $value = self::$cache[$key] ?? null;

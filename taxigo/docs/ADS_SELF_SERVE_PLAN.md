@@ -1,8 +1,8 @@
 # Seema Cabs Goa — Self-Serve Advertising: End-to-End Plan
 
-**Status:** Phases 0–3 built (see §21); multi-operator not started · **Revision 3** (consolidated;
-replaces revisions 1–2) · **Owners:** Seema Holidays (seller of ad space) and
-OfinIT Solutions Pvt. Ltd. (platform)
+**Status:** Phases 0–3 built, plus OfinIT as the seller (see §0 and §21); multi-operator not started ·
+**Revision 4** (§0 replaces D1–D3, §2, §12 and the invoice lines of §13) · **Owners:** OfinIT
+Solutions Pvt. Ltd. (seller of ad space, platform) and Seema Holidays (10% revenue share)
 
 Businesses in Goa (casinos, clubs, pubs, hotels, restaurants, rentals, tours,
 real estate) buy and manage ads inside the Seema Cabs Goa app (PWA + Android/
@@ -12,6 +12,43 @@ payment gateway**; **Seema Holidays keeps 10%**, and **OfinIT's share
 (the rest, plus GST) is split out automatically**.
 
 Items marked **[CA]** need the chartered accountant; **[Legal]** need a lawyer.
+
+---
+
+## 0. Revision 4 — OfinIT sells the ad space
+
+The gateways no longer allow split payments on Seema's account, so the
+roles are reversed. **This section overrides D1–D3, §2, §12 and the
+invoice lines of §13.**
+
+| # | Decision |
+|---|---|
+| R1 | **OfinIT sells the ad space.** Advertisers pay **OfinIT** on a Razorpay **payment link on OfinIT's account**, opened in a new tab from the PWA. Seema's gateway keys are never used for ads. |
+| R2 | **Seema Holidays gets 10% of the ad price + GST**, paid **per payment by Razorpay Route** from OfinIT's account to Seema's linked account (Admin → Billing). |
+| R3 | **OfinIT issues the advertiser's tax invoice** (`OFN/…/AD…`) and credit notes. |
+| R4 | **Seema → OfinIT "ad revenue share" tax invoice** (`SH/…/RS…`) is made and issued **automatically** on the 1st for the previous month's Route payouts. It is already paid by Route, so there is nothing to collect. It is shown in Admin → Billing for both logins. |
+| R5 | **Complimentary ads:** the admin can run an ad with no payment (Self-serve ads → "+ Complimentary ad"). There is no invoice, no payout and no review. It is served like any other ad and is marked "Complimentary". |
+
+**Example — ₹1,000 ad + 18% GST**
+
+| | Amount |
+|---|---|
+| Advertiser pays OfinIT | **₹1,180** |
+| → Seema by Route: 10% (₹100) + 18% GST (₹18) | **₹118** |
+| Seema pays the government ₹18 · **Seema earns ₹100** | |
+| OfinIT keeps ₹1,062: pays ₹180 GST − ₹18 credit on Seema's invoice = ₹162 · **OfinIT earns ₹900** | |
+
+**Flow:**
+1. **Checkout:** the slots are held (15 minutes). A payment link is created for the exact total, expiring with the hold. A retry reuses the open link; if the amount changed, the old link is cancelled first.
+2. **Payment confirmation:** the PWA polls `payment-status`. The ad page re-checks the payment when the advertiser comes back. The `payment_link.paid` webhook (`/api/ofinit/razorpay/webhook`) and the hourly `ads:maintain` also credit it. Each one re-checks the link with Razorpay.
+3. **Payout:** the Route payout to Seema runs on payment. Until Seema's `acc_…` is saved, the payout is **pending** and `ads:maintain` sends it once the account is set. Refunds come from OfinIT's account. A full refund uses `reverse_all`; a partial refund reverses Seema's share pro rata. A share billed earlier gets a revenue-share credit note the next month.
+4. **Older ads** paid on Seema's gateway keep the old flow: Seema's invoice and the monthly OfinIT → Seema `AP` invoice. That invoice now leaves out OfinIT-sold and complimentary ads.
+
+**[CA]:**
+- The SAC code for Seema's revenue-share invoice. It uses the ad SAC setting for now.
+- Whether a monthly consolidated invoice is fine for Route payouts.
+- TDS (194H/194J) on the 10% share.
+- **[Legal]** The agreement clause covering OfinIT as seller and Seema's 10% share.
 
 ---
 
@@ -572,6 +609,16 @@ phone OTP for the advertiser profile; NSFW detection and Google Safe
 Browsing; 1× / 2× image variants; frequency cap for in-app ads. Older
 Android / iOS builds keep the unchanged API and never receive the newer
 shapes.
+
+**Revision 4 (built):**
+
+| Item | Where |
+|---|---|
+| OfinIT payment link checkout (new tab, polling, return page re-check, webhook, hourly recovery) | `AdPaymentService::createOfinitLink`, `Customer\AdvertiseController::checkout / paymentStatus`, `OfinitRazorpayWebhookController` |
+| Route payout to Seema (10% + GST), pending until Seema's linked account is saved, retried hourly; refunds and reversals on OfinIT's account | `AdPaymentService::routeToSeema / refund`, `ads:maintain` |
+| Advertiser invoices by OfinIT (`meta.issuer = platform`) | `InvoiceService::adInvoice / adCreditNote` |
+| Seema → OfinIT revenue-share invoice + credit notes, automatic on the 1st | `InvoiceService::adRevenueShare`, `invoices:platform-fee`, Admin → Billing |
+| Complimentary ads by the admin | `AdCampaignService::createComplimentary`, Admin → Self-serve ads → "+ Complimentary ad" |
 
 **Operations:** add the Coolify volume `/var/www/html/storage/app/ads`
 (licences and original images, private) and keep the scheduler running.
