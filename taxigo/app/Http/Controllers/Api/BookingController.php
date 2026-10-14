@@ -255,22 +255,26 @@ class BookingController extends ResponseController
 
             DB::commit();
 
-            // The operator is the merchant: transfer OfinIT's fee + GST out of the
-            // payment (Razorpay Route / Cashfree split). Never blocks the booking;
-            // failures show in Admin → Reports → OfinIT Fee Transfers for retry.
-            try {
-                app(PlatformFeeTransferService::class)->transfer($bookingDetails, $paymentDetails->fresh());
-            } catch (\Throwable $th) {
-                Log::error("OfinIT fee transfer failed for {$bookingId}: " . $th->getMessage());
-            }
+            // Reply to the customer now; the gateway transfer, receipt voucher,
+            // confirmation email and push notifications run after the response
+            // has been sent (a slow mail server used to keep the customer on
+            // "Processing your payment…" for minutes).
+            app()->terminating(function () use ($bookingDetails, $paymentDetails, $bookingId, $user) {
+                // The operator is the merchant: transfer OfinIT's fee + GST out of the
+                // payment (Razorpay Route / Cashfree split). Never blocks the booking;
+                // failures show in Admin → Reports → OfinIT Fee Transfers for retry.
+                try {
+                    app(PlatformFeeTransferService::class)->transfer($bookingDetails, $paymentDetails->fresh());
+                } catch (\Throwable $th) {
+                    Log::error("OfinIT fee transfer failed for {$bookingId}: " . $th->getMessage());
+                }
 
-            try {
-                app(InvoiceService::class)->receiptVoucher($bookingDetails->fresh(), $paymentDetails);
-            } catch (\Throwable $th) {
-                Log::error("Receipt voucher failed for {$bookingId}: " . $th->getMessage());
-            }
+                try {
+                    app(InvoiceService::class)->receiptVoucher($bookingDetails->fresh(), $paymentDetails);
+                } catch (\Throwable $th) {
+                    Log::error("Receipt voucher failed for {$bookingId}: " . $th->getMessage());
+                }
 
-            if ($status) {
                 $user = $user ?? User::find($bookingDetails->customer_id);
                 try {
                     $title = 'Your Booking is Confirmed by Seema Cabs Goa!';
@@ -325,11 +329,10 @@ class BookingController extends ResponseController
                 } catch (\Throwable $th) {
                     Log::info('Getting issue on send admin notification :' . $th->getMessage());
                 }
+            });
 
-                return $this->success($data, 'Booking successfully');
-            } else {
-                return $this->error('Booking failed');
-            }
+            return $this->success($data, 'Booking successfully');
+
         } catch (\Throwable $th) {
             DB::rollBack();
             Log::error('Getting error of update payment status :' . $th->getMessage());
