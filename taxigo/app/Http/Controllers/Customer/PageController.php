@@ -232,7 +232,8 @@ class PageController extends Controller
                     'getPickupFrom' => fn($q) => $q->select('id', 'name'),
                     'getDropTo' => fn($q) => $q->select('id', 'name'),
                 ])
-                ->where('id', $booking)
+                // Links use the numeric id (My Rides) or the reference (booking confirmed: SC-GOA0322).
+                ->where(fn ($q) => $q->where('id', ctype_digit($booking) ? (int) $booking : 0)->orWhere('booking_id', $booking))
                 ->where('customer_id', Auth::guard('customer')->id())
                 ->first();
 
@@ -284,7 +285,8 @@ class PageController extends Controller
         ]) : [];
 
         return view('customer.trip.show', [
-            'bookingId' => $booking,
+            // Numeric id from here on (live refresh, SOS link), whichever form the URL used.
+            'bookingId' => $details?->id ?? $booking,
             'booking' => $details,
             'error' => $error,
             'invoices' => $invoices,
