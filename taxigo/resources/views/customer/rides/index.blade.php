@@ -56,14 +56,12 @@
                     <div class="card-core p-4">
                         <!-- HEADER -->
                         <div class="flex items-start justify-between gap-3 mb-3 pb-2.5 border-b border-sand/40">
-                            <div>
-                                <div class="flex items-center gap-2">
-                                    <h3 class="font-bold text-ink text-sm" x-text="ride.cab_name"></h3>
-                                    <span class="text-[10px] text-muted font-semibold bg-sand/60 px-2 py-0.5 rounded-full" x-text="ride.model"></span>
-                                </div>
-                                <p class="text-[11px] text-muted mt-0.5">Booking ID: <span class="font-semibold text-ink" x-text="'#' + ride.booking_id"></span></p>
+                            <div class="min-w-0 flex-1">
+                                <h3 class="font-bold text-ink text-sm leading-tight" x-text="ride.cab_name"></h3>
+                                <p class="text-[11px] text-muted leading-snug truncate" x-show="ride.model" x-text="ride.model"></p>
+                                <p class="text-[11px] text-muted mt-1">Booking ID: <span class="font-semibold text-ink whitespace-nowrap" x-text="'#' + ride.booking_id"></span></p>
                             </div>
-                            <span class="status-badge shrink-0" :class="'status-badge--' + statusOf(ride)" x-text="statusLabel(statusOf(ride))"></span>
+                            <span class="status-badge shrink-0 whitespace-nowrap" :class="'status-badge--' + statusOf(ride)" x-text="statusLabel(statusOf(ride))"></span>
                         </div>
 
                         <!-- OTP BANNER FOR ACTIVE RIDES -->
