@@ -8,7 +8,7 @@
 <div class="min-h-screen px-6 pt-14 pb-10 flex flex-col justify-between" style="background: linear-gradient(180deg, #FBF7F1 0%, #FDE9D2 100%);">
     <div>
         <div class="flex justify-center mb-8">
-            <img src="{{ asset('app-icons/logo-wordmark.png') }}" alt="Seema Cabs Goa" class="w-40">
+            <span class="relative inline-block"><img src="{{ asset('app-icons/logo-wordmark.png') }}" alt="Seema Cabs Goa" class="w-40"><span aria-label="trademark" style="position:absolute;top:0;right:-0.85em;font-size:14px;font-weight:700;line-height:1;color:#1f1f1f">&trade;</span></span>
         </div>
 
         <h1 class="text-2xl font-bold text-ink mb-1">Welcome</h1>

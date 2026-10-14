@@ -411,3 +411,25 @@ footer {
 .seo-content li {
     margin-bottom: 0.5rem;
 }
+
+/* Trademark mark beside the Seema Cabs Goa logo */
+.tm-logo {
+    position: relative;
+    display: inline-block;
+    line-height: 0;
+}
+
+.tm-mark {
+    position: absolute;
+    top: 0;
+    right: -0.9em;
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1;
+    color: #1f2937;
+}
+
+.footer .tm-mark,
+footer .tm-mark {
+    color: #e5e7eb;
+}

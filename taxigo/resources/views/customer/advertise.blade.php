@@ -8,7 +8,7 @@
 
     <div class="px-4 space-y-4">
         <div class="card text-center">
-            <img src="{{ asset('app-icons/logo-wordmark.png') }}" class="w-32 mx-auto mb-4" alt="Seema Cabs Goa">
+            <span class="relative inline-block mb-4"><img src="{{ asset('app-icons/logo-wordmark.png') }}" class="w-32" alt="Seema Cabs Goa"><span aria-label="trademark" style="position:absolute;top:0;right:-0.85em;font-size:12px;font-weight:700;line-height:1;color:#1f1f1f">&trade;</span></span>
             <h2 class="font-semibold text-ink mb-1">Advertise Inside Seema Cabs Goa App!</h2>
             <p class="text-sm text-muted mb-4">Promote your business to travellers in Goa — on the home screen, while they wait for a cab, and on their trip.</p>
             @if($enabled)

@@ -22,7 +22,7 @@
                     <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M11 18l-6-6 6-6"/></svg>
                 </a>
             @elseif($showLogo)
-                <img src="{{ asset('app-icons/logo-wordmark.png') }}" alt="Seema Cabs Goa" class="h-9 w-auto">
+                <span class="relative inline-block"><img src="{{ asset('app-icons/logo-wordmark.png') }}" alt="Seema Cabs Goa" class="h-9 w-auto"><span aria-label="trademark" style="position:absolute;top:0;right:-0.85em;font-size:10px;font-weight:700;line-height:1;color:#1f1f1f">&trade;</span></span>
             @endif
         </div>
 
