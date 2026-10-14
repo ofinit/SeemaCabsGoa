@@ -67,12 +67,32 @@ class RazorpayWebhookController extends Controller
         if (($event['event'] ?? null) === 'refund.processed') {
             $this->handleRefundProcessed($event);
         }
-        // Other events (payment.captured, payment.failed, etc.) are
-        // deliberately ignored — this endpoint's only job right now is
-        // keeping refund status in sync. Always ack with 200 regardless,
-        // so Razorpay doesn't retry events we intentionally don't act on.
+        // A paid booking whose confirmation never came from the browser.
+        if (in_array($event['event'] ?? null, ['payment.captured', 'order.paid'], true)) {
+            $this->handlePaid($event);
+        }
+        // Other events are ignored. Always ack with 200 so Razorpay doesn't
+        // retry events we intentionally don't act on.
 
         return response()->json(['status' => true]);
+    }
+
+    private function handlePaid(array $event): void
+    {
+        $orderId = $event['payload']['payment']['entity']['order_id'] ?? $event['payload']['order']['entity']['id'] ?? null;
+        if (!$orderId) {
+            return;
+        }
+        try {
+            $recovery = app(\App\Services\Payments\BookingPaymentRecovery::class);
+            $booking = $recovery->bookingForOrder($orderId);
+            if ($booking && (int) $booking->payment_status !== Type::ACTIVE) {
+                $recovery->recover($booking);
+            }
+        } catch (\Throwable $e) {
+            // The scheduled payments:recover check retries it.
+            Log::warning("Razorpay {$event['event']} for order {$orderId} not processed: " . $e->getMessage());
+        }
     }
 
     private function handleRefundProcessed(array $event): void

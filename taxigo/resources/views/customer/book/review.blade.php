@@ -200,7 +200,7 @@
                 <span class="text-[10px] text-muted block">Remaining &#8377;<span x-text="draft ? draft.cab.remain_payment : ''"></span> to driver</span>
             </div>
 
-            <button type="button" @click="payNow" class="btn-primary py-3.5 px-6 text-sm font-bold flex-1 flex items-center justify-center gap-2" :disabled="paying || !profileLoaded">
+            <button type="button" @click="payNow" class="btn-primary py-3.5 px-6 text-sm font-bold flex-1 flex items-center justify-center gap-2" :disabled="paying || paymentPending || !profileLoaded">
                 <span x-show="!paying" class="flex items-center gap-1.5">
                     <span>Pay &amp; Confirm</span>
                     <span class="btn-icon-bubble">
@@ -218,6 +218,20 @@
                 <svg class="w-10 h-10 mx-auto mb-4 animate-spin text-gold" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><circle cx="12" cy="12" r="10" stroke-opacity="0.25"/><path d="M22 12a10 10 0 0 0-10-10"/></svg>
                 <p class="font-bold text-ink text-sm">Processing your payment&hellip;</p>
                 <p class="text-xs text-muted mt-2">Please do not press back or close the browser.</p>
+            </div>
+        </div>
+    </template>
+
+    <template x-if="paymentPending && !confirmed">
+        <div class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center px-8">
+            <div class="bg-white rounded-card-outer p-7 text-center max-w-xs shadow-2xl">
+                <div class="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center mx-auto mb-3">
+                    <svg class="w-7 h-7 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                </div>
+                <h3 class="text-lg font-extrabold text-ink mb-1">Payment received</h3>
+                <p class="text-xs text-muted mb-4">We're confirming your booking <span class="font-semibold" x-text="bookingId"></span>. It will show in My Rides within a few minutes. Please don't pay again.</p>
+                <button type="button" class="btn-primary w-full py-3 text-sm mb-2" @click="checkPaymentAgain()" :disabled="paying">Check again</button>
+                <a href="{{ route('customer.rides') }}" class="block text-sm text-muted underline">Go to My Rides</a>
             </div>
         </div>
     </template>
@@ -307,7 +321,7 @@
                 };
             },
             get allPrefilled() { return Object.values(this.prefilled).every(Boolean); },
-            error: '', paying: false, confirmed: false, otp: '', bookingId: '',
+            error: '', paying: false, confirmed: false, paymentPending: false, pendingConfirm: null, otp: '', bookingId: '',
             goBack() {
                 const raw = sessionStorage.getItem('pendingBooking');
                 if (raw) {
@@ -390,6 +404,38 @@
                     this.states = res.data || [];
                 } catch (e) { /* ignore */ }
             },
+            /**
+             * The money is taken: confirm the booking with the server, retrying —
+             * right after a UPI app hands back to the browser the network is often
+             * not ready yet. If it still can't get through, the server confirms the
+             * payment by itself (webhook + reconciliation every few minutes).
+             */
+            async confirmPaid(body) {
+                this.pendingConfirm = body;
+                const delays = [0, 1500, 3000, 5000, 8000, 12000];
+                for (const wait of delays) {
+                    if (wait) await new Promise((r) => setTimeout(r, wait));
+                    try {
+                        await apiFetch('{{ route('customer.actions.confirm-payment') }}', { method: 'POST', body });
+                        sessionStorage.removeItem('pendingBooking');
+                        this.paying = false;
+                        this.paymentPending = false;
+                        this.error = '';
+                        this.confirmed = true;
+                        this.saveProfile();
+                        return;
+                    } catch (e) { /* retry */ }
+                }
+                sessionStorage.removeItem('pendingBooking');
+                this.paying = false;
+                this.paymentPending = true;
+            },
+            async checkPaymentAgain() {
+                if (!this.pendingConfirm || this.paying) return;
+                this.paying = true;
+                await this.confirmPaid(this.pendingConfirm);
+            },
+
             async payNow() {
                 this.error = '';
                 if (!this.profileLoaded) return; // profile still loading — button is disabled, but guard just in case
@@ -459,22 +505,13 @@
                                 return;
                             }
                             if (result.paymentDetails) {
-                                try {
-                                    await apiFetch('{{ route('customer.actions.confirm-payment') }}', { method: 'POST', body: {
-                                        booking_id: this.bookingId,
-                                        status: 1,
-                                        transaction_id: cfOrderRes.order_id,
-                                        payment_gateway: 'cashfree',
-                                        pg_order_id: cfOrderRes.order_id,
-                                    }});
-                                    sessionStorage.removeItem('pendingBooking');
-                                    this.paying = false;
-                                    this.confirmed = true;
-                                    this.saveProfile();
-                                } catch (e) {
-                                    this.paying = false;
-                                    this.error = 'Payment succeeded but confirmation failed: ' + e.message;
-                                }
+                                await this.confirmPaid({
+                                    booking_id: this.bookingId,
+                                    status: 1,
+                                    transaction_id: cfOrderRes.order_id,
+                                    payment_gateway: 'cashfree',
+                                    pg_order_id: cfOrderRes.order_id,
+                                });
                             }
                         });
                     } else {
@@ -496,21 +533,13 @@
                             prefill: { name: this.traveller.name, email: this.traveller.email, contact: this.traveller.phone_number },
                             theme: { color: '#FEDC33' },
                             handler: async (response) => {
-                                try {
-                                    await apiFetch('{{ route('customer.actions.confirm-payment') }}', { method: 'POST', body: {
-                                        booking_id: this.bookingId,
-                                        status: 1,
-                                        transaction_id: response.razorpay_payment_id,
-                                        payment_gateway: 'razorpay',
-                                    }});
-                                    sessionStorage.removeItem('pendingBooking');
-                                    this.paying = false;
-                                    this.confirmed = true;
-                                    this.saveProfile();
-                                } catch (e) {
-                                    this.paying = false;
-                                    this.error = 'Payment succeeded but confirmation failed: ' + e.message;
-                                }
+                                await this.confirmPaid({
+                                    booking_id: this.bookingId,
+                                    status: 1,
+                                    transaction_id: response.razorpay_payment_id,
+                                    pg_order_id: response.razorpay_order_id,
+                                    payment_gateway: 'razorpay',
+                                });
                             },
                             modal: { ondismiss: () => { this.paying = false; } },
                         });

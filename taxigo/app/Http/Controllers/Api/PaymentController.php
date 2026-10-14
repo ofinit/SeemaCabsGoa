@@ -64,6 +64,12 @@ class PaymentController extends ResponseController
                 'notes' => $booking ? ['booking_id' => $booking->booking_id] : null,
             ]));
 
+            // Remembered so a payment whose confirmation never arrives can be found (BookingPaymentRecovery).
+            if ($booking) {
+                \App\Models\Payment::where('booking_id', $booking->id)->where('status', '!=', \App\Enums\Type::PAID)
+                    ->update(['pg_order_id' => $order->id]);
+            }
+
             return response()->json([
                 'order_id' => $order->id,
                 'amount' => $order->amount,
