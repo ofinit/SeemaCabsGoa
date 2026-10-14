@@ -252,6 +252,9 @@ class AdCampaignService
         if ($campaign->items->isEmpty()) {
             $problems[] = 'Choose at least one placement.';
         }
+        if (!$campaign->isPaid() && ($gone = $campaign->items->filter(fn ($i) => !$i->placement->active))->isNotEmpty()) {
+            $problems[] = 'No longer available: ' . $gone->map(fn ($i) => $i->placement->code . ' ' . $i->placement->name)->implode(', ') . '. Remove it to continue.';
+        }
         $shapes = $campaign->items->map(fn ($i) => $i->placement->shapeKey())->unique();
         $have = $campaign->creatives->pluck('shape')->all();
         foreach ($shapes as $shape) {

@@ -61,11 +61,6 @@
                         <div class="col-md-4">
                             <label class="form-label">Days</label>
                             <input type="number" class="form-control" name="days" value="{{ old('days', 30) }}" min="1" max="366" required>
-                            <div class="form-text">In-cab QR cards (P18): 30, 60 or 90.</div>
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label">Cabs carrying QR cards (P18 only)</label>
-                            <input type="number" class="form-control" name="targeting[cabs]" value="{{ old('targeting.cabs') }}" min="1" max="200">
                         </div>
 
                         <div class="col-md-4">
