@@ -10,10 +10,10 @@ class SeemaContact
     /** Environment title of the WhatsApp number that receives booking details. */
     public const WHATSAPP = 'bookingwhatsappnumber';
 
-    /** The number on the marketing site, used until an admin sets one. */
-    private const DEFAULT_WHATSAPP = '919765040490';
+    /** Seema Cabs' phone and WhatsApp number, used until an admin sets another. */
+    private const DEFAULT_WHATSAPP = '919822385180';
 
-    /** WhatsApp number as digits with country code (wa.me format), e.g. 919765040490. */
+    /** WhatsApp number as digits with country code (wa.me format), e.g. 919822385180. */
     public static function whatsapp(): string
     {
         $digits = preg_replace('/\D/', '', (string) Environment::where('title', self::WHATSAPP)->value('value'));

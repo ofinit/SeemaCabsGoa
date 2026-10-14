@@ -138,7 +138,7 @@
                     <div class="col-md-6">
                         <label class="form-label" for="bookingWhatsapp">WhatsApp number with country code</label>
                         <input type="text" class="form-control" id="bookingWhatsapp" name="whatsapp" required maxlength="20"
-                            value="{{ old('whatsapp', '+' . \App\Services\SeemaContact::whatsapp()) }}" placeholder="+91 97650 40490">
+                            value="{{ old('whatsapp', '+' . \App\Services\SeemaContact::whatsapp()) }}" placeholder="+91 98223 85180">
                         <div class="form-text">After paying, customers can send their trip details to this number (WhatsApp app on phones, WhatsApp Web on computers).</div>
                     </div>
                     <div class="col-md-6 text-end">
