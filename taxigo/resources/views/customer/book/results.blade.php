@@ -36,7 +36,7 @@
                         <span>🗓️</span> <span x-text="pickupDateLabel + ' • ' + formatTime(pickupTime)"></span>
                     </p>
                 </div>
-                <a href="{{ route('customer.book') }}" class="px-2.5 py-1 rounded-full bg-black/5 hover:bg-gold text-[11px] font-semibold text-ink transition shrink-0">
+                <a href="{{ route('customer.book') }}" :href="editUrl()" class="px-2.5 py-1 rounded-full bg-black/5 hover:bg-gold text-[11px] font-semibold text-ink transition shrink-0">
                     Edit
                 </a>
             </div>
@@ -121,9 +121,20 @@
             toName: initialToName,
             pickupDateLabel: formatDMY(params.get('pickup_date') || ''),
             pickupTime: params.get('pickup_time') || '',
-            goBack() {
+            // Back to the booking form with this search filled in (route, date, time).
+            editUrl() {
                 const trip = params.get('trip') || 'airport';
-                window.location.href = '{{ route('customer.book') }}?trip=' + encodeURIComponent(trip);
+                const edit = new URLSearchParams({ trip });
+                if (trip === 'airport') {
+                    edit.set('airportDirection', (params.get('tab') === '2' || params.get('air_port_drop') === '2') ? 'drop' : 'pickup');
+                }
+                ['from', 'to', 'pickup_date', 'pickup_time'].forEach((key) => {
+                    if (params.get(key)) edit.set(key, params.get(key));
+                });
+                return '{{ route('customer.book') }}?' + edit.toString();
+            },
+            goBack() {
+                window.location.href = this.editUrl();
             },
             bookNow(cab) {
                 sessionStorage.setItem('pendingBooking', JSON.stringify({
