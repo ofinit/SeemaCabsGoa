@@ -351,6 +351,15 @@ class SettingController extends Controller
         }
     }
 
+    /** WhatsApp number that receives booking details from customers. */
+    public function storeBookingWhatsapp(Request $request)
+    {
+        $data = $request->validate(['whatsapp' => ['required', 'string', 'max:20', 'regex:/^\+?[0-9 ]{10,16}$/']]);
+        Environment::updateOrCreate(['title' => \App\Services\SeemaContact::WHATSAPP], ['value' => preg_replace('/\D/', '', $data['whatsapp'])]);
+
+        return redirect()->back()->with('success', 'Booking WhatsApp number saved.');
+    }
+
     public function advanceBooking(Request $request)
     {
         try {

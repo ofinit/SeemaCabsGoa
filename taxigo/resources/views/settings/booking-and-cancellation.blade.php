@@ -125,6 +125,31 @@
     </div>
 </div>
 
+<!-- Booking WhatsApp number -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5>Seema Holidays WhatsApp (booking details)</h5>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ route('admin.setting.storeBookingWhatsapp') }}" class="row g-2 align-items-end">
+                    @csrf
+                    <div class="col-md-6">
+                        <label class="form-label" for="bookingWhatsapp">WhatsApp number with country code</label>
+                        <input type="text" class="form-control" id="bookingWhatsapp" name="whatsapp" required maxlength="20"
+                            value="{{ old('whatsapp', '+' . \App\Services\SeemaContact::whatsapp()) }}" placeholder="+91 97650 40490">
+                        <div class="form-text">After paying, customers can send their trip details to this number (WhatsApp app on phones, WhatsApp Web on computers).</div>
+                    </div>
+                    <div class="col-md-6 text-end">
+                        <button type="submit" class="btn btn-primary">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Advance Cancellation Time -->
 <div class="row">
     <div class="col-12">

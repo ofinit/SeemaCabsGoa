@@ -259,6 +259,10 @@
                     </div>
                 </div>
                 <a :href="'/app/trip/' + bookingId" class="btn-primary w-full py-3 text-sm font-bold">View Trip Details</a>
+                <a :href="whatsappUrl()" target="_blank" rel="noopener" class="mt-2 w-full py-3 rounded-pill text-sm font-bold flex items-center justify-center gap-2 text-white" style="background:#25D366">
+                    <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.4A10 10 0 1 0 12 2Zm0 18a8 8 0 0 1-4.1-1.1l-.3-.2-3 .8.8-2.9-.2-.3A8 8 0 1 1 12 20Zm4.4-5.9c-.2-.1-1.4-.7-1.7-.8-.2-.1-.4-.1-.5.1l-.8 1c-.1.2-.3.2-.5.1a6.6 6.6 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.3.1-.2 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.5-.4h-.5a.9.9 0 0 0-.7.3 2.8 2.8 0 0 0-.9 2.1 4.9 4.9 0 0 0 1 2.6 11.2 11.2 0 0 0 4.3 3.8c1.6.7 2.2.7 3 .6.5-.1 1.4-.6 1.6-1.1.2-.6.2-1 .1-1.1l-.5-.3Z"/></svg>
+                    Send trip details to Seema Holidays
+                </a>
                 <template x-if="draft && draft.trip_type == 1">
                     <div>@include('customer.components.ad-slot', ['screen' => \App\Services\Ads\AdServer::SCREEN_AIRPORT_ARRIVALS, 'class' => 'mt-4 text-left', 'context' => ['trip' => 'airport_pickup']])</div>
                 </template>
@@ -276,6 +280,7 @@
 @push('scripts')
 <script>
     function reviewBooking(initialUser = {}, initialCountries = [], initialStates = [], initialPaymentKey = '') {
+        const seemaWhatsapp = @js(\App\Services\SeemaContact::whatsapp());
         return {
             draft: null, tab: 'inclusions',
             countries: initialCountries,
@@ -410,6 +415,48 @@
              * not ready yet. If it still can't get through, the server confirms the
              * payment by itself (webhook + reconciliation every few minutes).
              */
+            /** Booking summary for Seema Holidays, formatted for WhatsApp (*bold*). */
+            whatsappMessage() {
+                const d = this.draft || {};
+                const cab = d.cab || {};
+                const num = (v) => Number(String(v ?? 0).replace(/,/g, '')) || 0;
+                const rupees = (v) => '₹' + num(v).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+                const tab = String(d.tab || '');
+                const trip = tab === '1' ? 'Airport pickup' : tab === '2' ? 'Airport drop' : (d.trip_type && isNaN(d.trip_type) ? d.trip_type : 'In-city ride');
+                const date = d.pickup_date ? formatDMY(d.pickup_date) : '';
+                const time = d.pickup_time ? formatTime(d.pickup_time) : '';
+                const advance = num(cab.part_payment ?? d.part_payment);
+                const balance = num(cab.remain_payment ?? d.remain_payment);
+                const lines = [
+                    '*New booking: ' + this.bookingId + '*',
+                    '',
+                    '*Trip:* ' + trip,
+                    '*Pick-up:* ' + (d.pickup_address || '-'),
+                    '*Drop-off:* ' + (d.drop_of_address || '-'),
+                    '*Date & time:* ' + [date, time].filter(Boolean).join(', '),
+                    '*Cab:* ' + [cab.cab_name || d.cab_type, cab.model || d.cab_model].filter(Boolean).join(' - '),
+                    '',
+                    '*Customer:* ' + (this.traveller.name || '-'),
+                    '*Phone:* ' + (this.traveller.phone_number || '-'),
+                ];
+                if (this.traveller.email) lines.push('*Email:* ' + this.traveller.email);
+                lines.push('',
+                    '*Total fare:* ' + rupees(advance + balance),
+                    '*Paid online:* ' + rupees(advance),
+                    '*To pay driver:* ' + rupees(balance));
+
+                return lines.join('\n');
+            },
+            /** Phones and tablets open the WhatsApp app; computers open WhatsApp Web. */
+            whatsappUrl() {
+                const text = encodeURIComponent(this.whatsappMessage());
+                const mobile = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent)
+                    || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
+
+                return mobile
+                    ? 'https://wa.me/' + seemaWhatsapp + '?text=' + text
+                    : 'https://web.whatsapp.com/send?phone=' + seemaWhatsapp + '&text=' + text;
+            },
             async confirmPaid(body) {
                 this.pendingConfirm = body;
                 const delays = [0, 1500, 3000, 5000, 8000, 12000];

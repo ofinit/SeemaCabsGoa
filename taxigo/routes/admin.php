@@ -177,6 +177,7 @@ Route::group(['prefix' => 'admin', 'middleware' => ['auth', 'TwoFa', 'admin.only
 
         // Advance Booking
         Route::get('/booking-and-cancellation', [SettingController::class, 'advanceBooking'])->name('advanceBooking');
+        Route::post('/booking-whatsapp', [SettingController::class, 'storeBookingWhatsapp'])->name('storeBookingWhatsapp');
         Route::post('/store-advance-bookings', [SettingController::class, 'storeAdvanceBooking'])->name('storeAdvanceBooking');
         Route::post('/store-advance-bookings-cancellation', [SettingController::class, 'storeAdvanceBookingCancellationForm'])->name('storeAdvanceBookingCancellationForm');
 
