@@ -60,6 +60,7 @@ class Kernel extends HttpKernel
         'customer.guest' => \App\Http\Middleware\Customer\RedirectIfAuthenticated::class,
         'TwoFa' => \App\Http\Middleware\TwoFaSecurity::class,
         'admin.only' => \App\Http\Middleware\AdminOnlyRoutes::class,
+        'fleet.access' => \App\Http\Middleware\FleetAccess::class,
         'auth.basic' => \Illuminate\Auth\Middleware\AuthenticateWithBasicAuth::class,
         'auth.session' => \Illuminate\Session\Middleware\AuthenticateSession::class,
         'cache.headers' => \Illuminate\Http\Middleware\SetCacheHeaders::class,

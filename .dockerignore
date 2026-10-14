@@ -33,3 +33,6 @@ taxigo/storage/framework/sessions/*
 taxigo/storage/framework/views/*
 !taxigo/storage/framework/views/.gitignore
 taxigo/bootstrap/cache/*.php
+
+# Android fleet app: not part of the website image
+fleet-app

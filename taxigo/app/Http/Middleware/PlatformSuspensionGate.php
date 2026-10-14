@@ -43,6 +43,11 @@ class PlatformSuspensionGate
             return $next($request);
         }
 
+        // Fleet app: its own login, and the bookings for logged-in fleet operator / admin (rides under way).
+        if ($request->is('fleet', 'fleet/*')) {
+            return $next($request);
+        }
+
         // Admin area: OfinIT keeps full access; Seema's fleet operator only the Billing page.
         if ($request->is('admin', 'admin/*')) {
             $user = $request->user();

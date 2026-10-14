@@ -329,6 +329,13 @@ class BookingController extends ResponseController
                 } catch (\Throwable $th) {
                     Log::info('Getting issue on send admin notification :' . $th->getMessage());
                 }
+
+                // Seema Cabs Fleet app: loud new-booking alert.
+                try {
+                    \App\Services\Fleet\FleetAlerts::newBooking($bookingDetails);
+                } catch (\Throwable $th) {
+                    Log::warning("Fleet app alert failed for {$bookingId}: " . $th->getMessage());
+                }
             });
 
             return $this->success($data, 'Booking successfully');
@@ -380,6 +387,17 @@ class BookingController extends ResponseController
         ]);
 
         $bookingDetail->save();
+
+        if ((int) $bookingDetail->payment_status === Type::ACTIVE) {
+            $cancelled = $bookingDetail;
+            app()->terminating(function () use ($cancelled) {
+                try {
+                    \App\Services\Fleet\FleetAlerts::cancelled($cancelled);
+                } catch (\Throwable $th) {
+                    Log::warning("Fleet app cancel alert failed for {$cancelled->booking_id}: " . $th->getMessage());
+                }
+            });
+        }
 
 
         $cancelBy = $request['cancel_by'] ?? "Admin";

@@ -1,0 +1,13 @@
+node_modules/
+# Signing key and Firebase config: never commit (see README.md)
+keystore/
+android/app/google-services.json
+android/keystore.properties
+# Build output
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/capacitor-cordova-android-plugins/build/
+*.apk
+*.aab

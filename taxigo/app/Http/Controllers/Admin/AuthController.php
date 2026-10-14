@@ -129,7 +129,7 @@ class AuthController extends Controller
             }
             $user->authenticate = 1;
             $user->save();
-            return redirect()->route('admin.dashboard')->with('success', 'Authenticate successfully.');
+            return redirect()->intended(route('admin.dashboard'))->with('success', 'Authenticate successfully.');
         } catch (\Exception $e) {
             Log::error('Getting error of check 2 fa authentication :' . $e->getMessage());
             return redirect()->back()->with('error', 'Something went wrong,Please try again latter.');

@@ -1,0 +1,17 @@
+{
+  "name": "seema-cabs-fleet",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Seema Cabs Fleet: Android app for the fleet operator (new-booking alerts, booking details and trip status). Loads https://seemacabsgoa.com/fleet.",
+  "scripts": {
+    "sync": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.5.3",
+    "@capacitor/core": "8.5.3",
+    "@capacitor/push-notifications": "8.1.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.5.3"
+  }
+}

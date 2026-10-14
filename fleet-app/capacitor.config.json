@@ -1,0 +1,18 @@
+{
+  "appId": "com.seemacabsgoa.fleet",
+  "appName": "Seema Cabs Fleet",
+  "webDir": "www",
+  "server": {
+    "url": "https://seemacabsgoa.com/fleet",
+    "allowNavigation": ["seemacabsgoa.com", "www.seemacabsgoa.com"],
+    "errorPath": "offline.html"
+  },
+  "android": {
+    "backgroundColor": "#F6C21C"
+  },
+  "plugins": {
+    "PushNotifications": {
+      "presentationOptions": ["badge", "sound", "alert"]
+    }
+  }
+}

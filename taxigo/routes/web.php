@@ -72,6 +72,7 @@ Route::get('{page}.html', [MarketingPageController::class, 'show'])->where('page
 
 require __DIR__ . '/admin.php';
 require __DIR__ . '/customer.php';
+require __DIR__ . '/fleet.php';
 
 // Unknown paths: a normal 404 — or, while the service is suspended, the
 // "temporarily unavailable" page (PlatformSuspensionGate).
