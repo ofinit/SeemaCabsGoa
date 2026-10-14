@@ -24,11 +24,16 @@
 @section('body')
 <div class="bar">
     <h1>Bookings</h1>
-    <button class="btn-icon" type="button" onclick="location.reload()" aria-label="Refresh">⟳</button>
-    <form method="POST" action="{{ route('fleet.logout') }}" onsubmit="this.token.value = (function(){ try { return localStorage.getItem('fleetToken') || '' } catch(e) { return '' } })(); return confirm('Log out? This phone will stop getting booking alerts.')">
+    <button class="btn-icon" type="button" onclick="fleetRefresh(this)" aria-label="Refresh" title="Refresh">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
+    </button>
+    <form method="POST" action="{{ route('fleet.logout') }}" id="logout-form"
+          onsubmit="this.token.value = (function(){ try { return localStorage.getItem('fleetToken') || '' } catch(e) { return '' } })(); confirmSubmit(this, 'Log out?', 'This phone will stop getting booking alerts until you log in again.', 'Log out', true); return false;">
         @csrf
         <input type="hidden" name="token">
-        <button class="btn-icon" aria-label="Log out" title="Log out">⏻</button>
+        <button class="btn-icon" aria-label="Log out" title="Log out">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5"/><path d="M5 12h11"/></svg>
+        </button>
     </form>
 </div>
 <div class="wrap">
@@ -70,7 +75,7 @@
 <script>
     document.body.dataset.page = 'list';
     // Keep the list fresh while it's on screen.
-    setInterval(() => { if (!document.hidden) location.reload(); }, 60000);
-    document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - performance.timeOrigin > 60000) location.reload(); });
+    setInterval(() => { if (!document.hidden) fleetRefresh(); }, 60000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - performance.timeOrigin > 60000) fleetRefresh(); });
 </script>
 @endpush

@@ -5,10 +5,13 @@ namespace App\Http\Controllers\Fleet;
 use App\Enums\Type;
 use App\Http\Controllers\Controller;
 use App\Models\FleetDeviceToken;
+use App\Models\BookingDetail;
 use App\Services\Fleet\FleetBookings;
+use App\Services\Fleet\FleetTrips;
 use App\Services\Platform\PlatformSettings;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use RuntimeException;
 
 /**
  * The Seema Cabs Fleet app (Android shell in fleet-app/ loads these pages):
@@ -82,7 +85,48 @@ class FleetController extends Controller
         $details = FleetBookings::find(Auth::user(), $booking);
         abort_unless($details, 404);
 
-        return view('fleet.show', ['b' => $details, 'suspended' => PlatformSettings::suspended()]);
+        $booking = BookingDetail::find($details['id']);
+
+        return view('fleet.show', [
+            'b' => $details,
+            'suspended' => PlatformSettings::suspended(),
+            'drivers' => FleetTrips::drivers(Auth::user(), $booking),
+            'driverMessage' => FleetTrips::driverMessage($details),
+            'canNoShow' => $details['status'] === 'assigned' || $details['status'] === 'confirmed'
+                ? now('Asia/Kolkata')->greaterThanOrEqualTo(\Carbon\Carbon::parse($booking->getRawOriginal('pickup_date') . ' ' . $booking->pickup_time, 'Asia/Kolkata'))
+                : false,
+            'canUndoNoShow' => $details['status'] === 'no_show' && $booking->no_show_at && \Carbon\Carbon::parse($booking->no_show_at)->isSameDay(now()),
+            'canRefund' => $details['status'] === 'cancelled' && !((float) $booking->refund > 0),
+        ]);
+    }
+
+    /** Trip actions from the booking page: assign, complete, cancel (+ refund), refund, no-show, undo. */
+    public function action(Request $request, string $booking)
+    {
+        $details = FleetBookings::find(Auth::user(), $booking);
+        abort_unless($details, 404);
+        $b = BookingDetail::find($details['id']);
+        $data = $request->validate([
+            'action' => 'required|in:assign,complete,cancel,refund,no_show,undo_no_show',
+            'driver_id' => 'required_if:action,assign|nullable|integer',
+            'refund' => 'nullable|boolean',
+            'reason' => 'required_if:action,no_show|nullable|string|max:255',
+        ]);
+
+        try {
+            $message = match ($data['action']) {
+                'assign' => tap('Driver assigned. The customer has been notified.', fn () => FleetTrips::assign(Auth::user(), $b, (int) $data['driver_id'])),
+                'complete' => FleetTrips::complete($b),
+                'cancel' => FleetTrips::cancel($b, (bool) ($data['refund'] ?? false)),
+                'refund' => FleetTrips::refund($b),
+                'no_show' => FleetTrips::noShow($b, $data['reason']),
+                'undo_no_show' => FleetTrips::undoNoShow($b),
+            };
+        } catch (RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        return redirect()->route('fleet.show', $b->id)->with('success', $message);
     }
 
     /** The app's Firebase token for this phone (called by the page inside the app). */

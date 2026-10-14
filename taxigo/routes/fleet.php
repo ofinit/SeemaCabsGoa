@@ -14,6 +14,7 @@ Route::prefix('fleet')->name('fleet.')->group(function () {
     Route::middleware(['fleet.access', 'TwoFa'])->group(function () {
         Route::get('/', [FleetController::class, 'index'])->name('index');
         Route::get('bookings/{booking}', [FleetController::class, 'show'])->name('show');
+        Route::post('bookings/{booking}', [FleetController::class, 'action'])->middleware('throttle:30,1')->name('action');
         Route::post('device-token', [FleetController::class, 'registerToken'])->middleware('throttle:30,1')->name('token');
         Route::post('logout', [FleetController::class, 'logout'])->name('logout');
     });

@@ -70,7 +70,7 @@ class PageController extends Controller
             if ($user) {
                 $b = BookingDetail::without(['getSosDetails', 'user', 'cabRate', 'getPickupFrom', 'getDropTo'])
                     ->with([
-                        'assignDriver' => fn($q) => $q->select('id', 'driver_name', 'driver_mobile'),
+                        'assignDriver' => fn($q) => $q->select('id', 'name as driver_name', 'mobile as driver_mobile'),
                         'getCabDetails' => fn($q) => $q->without([
                             'getCabModelDetails', 'getDriverDetails', 'getColorDetails',
                             'getCityDetails', 'getFleetOperatorDetails', 'getWaitingChargeDetails',
@@ -222,7 +222,7 @@ class PageController extends Controller
         try {
             $b = BookingDetail::without(['getSosDetails', 'user', 'cabRate'])
                 ->with([
-                    'assignDriver' => fn($q) => $q->select('id', 'driver_name', 'driver_mobile'),
+                    'assignDriver' => fn($q) => $q->select('id', 'name as driver_name', 'mobile as driver_mobile'),
                     'getCabDetails' => fn($q) => $q->without([
                         'getCabModelDetails', 'getDriverDetails', 'getColorDetails',
                         'getCityDetails', 'getFleetOperatorDetails', 'getWaitingChargeDetails',
@@ -312,7 +312,7 @@ class PageController extends Controller
             if ($user) {
                 $bookings = BookingDetail::without(['getSosDetails', 'user', 'cabRate'])
                     ->with([
-                        'assignDriver' => fn($q) => $q->select('id', 'driver_name', 'driver_mobile'),
+                        'assignDriver' => fn($q) => $q->select('id', 'name as driver_name', 'mobile as driver_mobile'),
                         'getCabDetails' => fn($q) => $q->without([
                             'getCabModelDetails', 'getDriverDetails', 'getColorDetails',
                             'getCityDetails', 'getFleetOperatorDetails', 'getWaitingChargeDetails',

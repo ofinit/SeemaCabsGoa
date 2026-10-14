@@ -158,7 +158,7 @@ class TripManagementController extends Controller
             $booking->save();
 
             $driverDetail = isset($booking->assignDriver) ? $booking->assignDriver : null;
-            $driverName = isset($driverDetail) && $driverDetail != null ? $driverDetail->driver_name : '--';
+            $driverName = $driverDetail ? ($driverDetail->name ?: '--') : '--';
             $cabColor = isset($booking->assignDriver->getCabDetails->getColorDetails->name) ? $booking->assignDriver->getCabDetails->getColorDetails->name : '--';
             $cabNumber = isset($booking->assignDriver->getCabDetails->number) ? $booking->assignDriver->getCabDetails->number : '--';
             $trip_otp = isset($booking->trip_otp) ? $booking->trip_otp : '--';
@@ -183,8 +183,8 @@ class TripManagementController extends Controller
 
             $userFcmToken = UserFcmToken::where('user_id', $booking->customer_id)->first();
             $notification = new NotificationService();
-            $pickupDateRaw = Carbon::parse($bookingDetail->pickup_date ?? null)->format('d M, Y');
-            $pickupTimeRaw = Carbon::parse($bookingDetail->pickup_time ?? null)->format('H:i A');
+            $pickupDateRaw = Carbon::parse($booking->getRawOriginal('pickup_date') ?? null)->format('d M, Y');
+            $pickupTimeRaw = Carbon::parse($booking->pickup_time ?? null)->format('g:i A');
 
             $title = "Your Ride is Confirmed!";
             $body = "Your ride $bookingId on $pickupDateRaw at $pickupTimeRaw is assigned to $driverName.\n\nCab: $cabColor  $model - $cabNumber. OTP: $trip_otp";

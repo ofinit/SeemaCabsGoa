@@ -33,12 +33,63 @@
         .banner { background:var(--red-soft); color:var(--red); border-radius:12px; padding:10px 14px; font-size:13px; font-weight:600; margin:12px 0 0; }
         .toast { position:fixed; left:16px; right:16px; top:calc(70px + env(safe-area-inset-top)); z-index:50; background:var(--ink); color:#fff; border-radius:14px; padding:12px 16px; box-shadow:0 8px 24px rgba(0,0,0,.25); display:none; font-weight:600; }
         .toast.show { display:block; }
+        .btn-icon svg, .ico { width:20px; height:20px; }
+        .btn-icon.spinning svg { animation:spin .8s linear infinite; }
+        @keyframes spin { to { transform:rotate(360deg); } }
+        .btn-red { background:var(--red-soft); color:var(--red); }
+        .btn-block { width:100%; }
+        .flash { border-radius:12px; padding:10px 14px; font-size:14px; font-weight:600; margin:12px 0 0; }
+        .flash.ok { background:var(--green-soft); color:var(--green); }
+        .flash.err { background:var(--red-soft); color:var(--red); }
+        .sheet { position:fixed; inset:0; z-index:60; background:rgba(0,0,0,.45); display:flex; align-items:flex-end; justify-content:center; }
+        .sheet[hidden] { display:none; }
+        .sheet-panel { background:#fff; width:100%; max-width:640px; max-height:85vh; overflow:auto; border-radius:20px 20px 0 0; padding:18px 16px calc(18px + env(safe-area-inset-bottom)); }
+        .sheet-panel h3 { margin:0 0 6px; font-size:18px; }
+        .sheet-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:16px; position:sticky; bottom:calc(-18px - env(safe-area-inset-bottom)); background:#fff; padding:10px 0 calc(4px + env(safe-area-inset-bottom)); }
+        textarea, .sheet input[type=text] { width:100%; border:1px solid var(--line); border-radius:12px; padding:12px; font:inherit; }
     </style>
     @stack('head')
 </head>
 <body>
     @yield('body')
     <div class="toast" id="toast"></div>
+
+    {{-- In-app confirm (used instead of the browser's confirm box). --}}
+    <div class="sheet" id="confirm-sheet" hidden>
+        <div class="sheet-panel">
+            <h3 id="confirm-title"></h3>
+            <p class="muted" id="confirm-text" style="margin:0"></p>
+            <div class="sheet-actions">
+                <button class="btn btn-line" type="button" id="confirm-no">Back</button>
+                <button class="btn btn-gold" type="button" id="confirm-yes">OK</button>
+            </div>
+        </div>
+    </div>
+    <script>
+        window.openSheet = (id) => { document.getElementById(id).hidden = false; };
+        window.closeSheet = (id) => { document.getElementById(id).hidden = true; };
+        document.addEventListener('click', (e) => { if (e.target.classList && e.target.classList.contains('sheet')) e.target.hidden = true; });
+        window.fleetConfirm = (title, text, ok = 'OK', danger = false) => new Promise((resolve) => {
+            document.getElementById('confirm-title').textContent = title;
+            document.getElementById('confirm-text').textContent = text || '';
+            const yes = document.getElementById('confirm-yes'), no = document.getElementById('confirm-no');
+            yes.textContent = ok; yes.className = 'btn ' + (danger ? 'btn-red' : 'btn-gold');
+            const done = (v) => { closeSheet('confirm-sheet'); yes.onclick = no.onclick = null; resolve(v); };
+            yes.onclick = () => done(true); no.onclick = () => done(false);
+            openSheet('confirm-sheet');
+        });
+        // Reload this page from the server (with a spinner), not from cache.
+        window.fleetRefresh = (btn) => {
+            if (btn) btn.classList.add('spinning');
+            const u = new URL(window.location.href); u.searchParams.set('_', Date.now());
+            window.location.replace(u.toString());
+        };
+        // Submit a form after an in-app confirm.
+        // Always call from onsubmit as `confirmSubmit(...); return false;` — it submits after the user confirms.
+        window.confirmSubmit = async (form, title, text, ok, danger) => {
+            if (await fleetConfirm(title, text, ok, danger)) { form.querySelectorAll('button').forEach(b => b.disabled = true); form.submit(); }
+        };
+    </script>
 
     {{-- Inside the Android app: register for new-booking alerts and open the booking an alert was tapped on. --}}
     <script>
@@ -61,7 +112,7 @@
         });
         push.addListener('pushNotificationReceived', (n) => {
             window.fleetToast((n.title || 'New booking') + (n.body ? ' · ' + n.body.split('\n')[0] : ''));
-            if (document.body.dataset.page === 'list') setTimeout(() => window.location.reload(), 1500);
+            if (document.body.dataset.page === 'list') setTimeout(() => window.fleetRefresh(), 1500);
         });
         if (!loggedIn) return;
 
