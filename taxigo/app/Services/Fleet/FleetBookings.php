@@ -122,6 +122,7 @@ class FleetBookings
                 'driver_phone' => $driver?->mobile ?: $driver?->driver_mobile,
                 'cab_number' => $cabNumber,
                 'refund' => (float) $b->refund,
+                'trip_otp' => $b->trip_otp,
                 'booked_at' => $b->created_at ? Carbon::parse($b->created_at)->timezone('Asia/Kolkata')->format('d M Y, g:i A') : '',
                 'package' => $b->sight_seeing_package_id ? optional($b->sightSeeingPackage)->title : null,
             ];

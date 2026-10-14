@@ -111,7 +111,11 @@ class FleetTrips
         return self::admin(fn () => app(TripManagementController::class)->undoNoShow($booking->id));
     }
 
-    /** Trip details for the driver (WhatsApp / copy). No start OTP: the customer gives it at pickup. */
+    /**
+     * Trip details for the driver (WhatsApp / copy). Includes the start OTP so the
+     * driver can check the code the customer reads out at pick-up (nothing else
+     * verifies it: there is no driver app).
+     */
     public static function driverMessage(array $b): string
     {
         $lines = [
@@ -130,7 +134,11 @@ class FleetTrips
         $lines[] = '*Cab:* ' . $b['cab'] . ($b['cab_number'] ? ' · ' . $b['cab_number'] : '');
         $lines[] = '';
         $lines[] = '*Collect from customer:* ₹' . number_format($b['balance'], 2);
-        $lines[] = 'Ask the customer for the start OTP at pick-up.';
+        if ($b['trip_otp']) {
+            $lines[] = '';
+            $lines[] = '*Start OTP:* ' . $b['trip_otp'];
+            $lines[] = 'The customer will tell you this code. Start the trip only if it matches.';
+        }
 
         return implode("\n", $lines);
     }
